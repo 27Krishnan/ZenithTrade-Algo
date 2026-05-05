@@ -71,18 +71,23 @@ class TrailingProfit:
                              entry_type: str) -> bool:
         """
         Check if entry condition is met:
-        ABOVE → buy when LTP crosses above entry price
-        BELOW → buy when LTP drops below entry price
-        LIMIT / MARKET → triggered immediately
+        ABOVE → BUY when LTP >= entry price (breakout)
+        BELOW → BUY when LTP <= entry price (pullback/reversal)
+        LIMIT → Smart detection based on entry vs current price.
         """
+        action = action.upper()
         if entry_type == "ABOVE":
             return ltp >= entry_price
         elif entry_type == "BELOW":
             return ltp <= entry_price
         elif entry_type == "LIMIT":
-            if action.upper() == "BUY":
+            # For LIMIT, we want to buy at or better than entry_price.
+            # But in paper trading, if you put a price FAR from LTP, you usually mean a breakout.
+            # We follow the 'at or better' rule for standard LIMIT orders.
+            if action == "BUY":
                 return ltp <= entry_price
-            else:
+            else: # SELL
                 return ltp >= entry_price
         else:
-            return True  # MARKET - triggered at creation
+            # MARKET or anything else
+            return True

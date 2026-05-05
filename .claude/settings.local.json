@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c \"import fastapi, uvicorn, sqlalchemy, apscheduler, pyotp, loguru, easyocr; print\\('All imports OK'\\)\")",
+      "Bash(python -c \"from smartapi import SmartConnect; print\\('SmartAPI OK'\\)\")",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.path\\)\")",
+      "Bash(python -c \"import pkgutil; print\\([m.name for m in pkgutil.iter_modules\\(\\) if 'smart' in m.name.lower\\(\\)]\\)\")"
+    ]
+  }
+}

@@ -1,7 +1,9 @@
-import pyotp
 import time
+import pyotp
+import threading
 from SmartApi import SmartConnect
 from config.settings import settings
+from datetime import datetime
 from loguru import logger
 
 
@@ -13,6 +15,8 @@ class AngelOneAPI:
         self._connected = False
         self._monitoring = False
         self._heartbeat_failures = 0
+        self._ltp_cache = {}  # (exchange, token) -> (ltp, timestamp)
+        self._cache_lock = threading.Lock()
 
     def connect(self) -> bool:
         try:
@@ -41,7 +45,6 @@ class AngelOneAPI:
         if self._monitoring:
             return
         self._monitoring = True
-        import threading
 
         t = threading.Thread(
             target=self._heartbeat_loop, daemon=True, name="AngelHeartbeat"
@@ -71,7 +74,6 @@ class AngelOneAPI:
                 if self._heartbeat_failures >= 3:
                     logger.warning("Angel heartbeat errors repeated, attempting reconnect...")
                     self._try_reconnect()
-            import time
 
             time.sleep(60)
 
@@ -81,7 +83,6 @@ class AngelOneAPI:
 
     def _try_reconnect(self) -> bool:
         """Reconnect with exponential backoff"""
-        import pyotp
 
         for attempt in range(3):
             try:
@@ -112,7 +113,6 @@ class AngelOneAPI:
                     )
             except Exception as e:
                 logger.warning(f"Reconnect attempt {attempt + 1} error: {e}")
-            import time
 
             time.sleep(2**attempt)  # 2, 4, 8 seconds
         self._connected = False
@@ -120,12 +120,33 @@ class AngelOneAPI:
         return False
 
     def get_ltp(self, exchange: str, symbol: str, token: str) -> float | None:
+        now = time.time()
+        key = (exchange, token)
+        
+        with self._cache_lock:
+            cached_val, ts = self._ltp_cache.get(key, (None, 0))
+            if cached_val and (now - ts) < 1.0:  # 1 second cache
+                return cached_val
+
         try:
+            if not self._connected: return None
             data = self.api.ltpData(exchange, symbol, token)
             if data["status"]:
-                return float(data["data"]["ltp"])
+                ltp = float(data["data"]["ltp"])
+                with self._cache_lock:
+                    self._ltp_cache[key] = (ltp, now)
+                return ltp
+            
+            # Handle rate limit error specifically
+            if "Access denied" in str(data.get("message", "")):
+                logger.warning(f"Angel Rate Limit hit for {symbol}. Using stale cache.")
+                return cached_val
+                
             return None
         except Exception as e:
+            if "Access denied" in str(e):
+                logger.warning(f"Angel Rate Limit hit (exception) for {symbol}. Using stale cache.")
+                return cached_val
             logger.error(f"LTP fetch error for {symbol}: {e}")
             return None
 
@@ -163,6 +184,29 @@ class AngelOneAPI:
             logger.error(f"Candle data error for token {token}: {e}")
             return None
 
+    def get_historical_data(
+        self, token: str, exchange: str, interval: str, days: int
+    ):
+        """Fetch historical candles and return as a pandas DataFrame."""
+        import pandas as pd
+        from datetime import datetime, timedelta
+        
+        to_date   = datetime.now().strftime("%Y-%m-%d 23:59")
+        from_date = (datetime.now() - timedelta(days=days + 5)).strftime("%Y-%m-%d 09:00")
+        
+        raw = self.get_candle_data(token, exchange, interval, from_date, to_date)
+        if not raw:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(raw, columns=["date", "open", "high", "low", "close", "volume"])
+        df["date"] = df["date"].str[:10] # "YYYY-MM-DD"
+        
+        # Exclude today's incomplete candle
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        df = df[df["date"] < today_str]
+        
+        return df.sort_values("date", ascending=False)
+
     def search_scrip(self, exchange: str, search_text: str) -> list:
         try:
             data = self.api.searchScrip(exchange, search_text)
@@ -174,11 +218,79 @@ class AngelOneAPI:
             return []
 
     def get_token(self, exchange: str, symbol: str) -> str | None:
-        """Get instrument token from symbol name"""
+        """Get instrument token from symbol name with exact match preference"""
         results = self.search_scrip(exchange, symbol)
         if results:
+            # Prefer exact symbol match first
+            for res in results:
+                if res.get("symbol") == symbol:
+                    return res.get("symboltoken")
+            # Fallback to first result
             return results[0].get("symboltoken")
         return None
+
+    def get_current_future_symbol(self, instrument: str, exchange: str = "NFO", ref_date: datetime = None, allow_rollover: bool = True) -> dict | None:
+        """Finds the current active future contract (Near or Next month) based on 10-day rollover rule."""
+        try:
+            from api.option_chain import load_master
+            master = load_master()
+            if not master: return None
+        except Exception as e:
+            logger.error(f"Master load failed in future search: {e}")
+            return None
+
+        candidates = []
+        name_upper = instrument.upper()
+        
+        # Determine expected instrument type
+        target_inst_type = "FUTIDX" if exchange == "NFO" else "FUTCOM"
+        
+        for row in master:
+            if (row.get("name", "").upper() == name_upper and 
+                row.get("exch_seg") == exchange and 
+                row.get("instrumenttype") == target_inst_type):
+                
+                exp = row.get("expiry")
+                if not exp: continue
+                try:
+                    # Parse DDMMMYYYY (e.g. 28APR2026)
+                    exp_dt = datetime.strptime(exp, "%d%b%Y")
+                    candidates.append({
+                        "symbol": row["symbol"],
+                        "token": row["token"],
+                        "expiry": exp_dt,
+                        "tradingsymbol": row["symbol"]
+                    })
+                except: continue
+
+        # Filter candidates to only include those from the current or future years
+        current_year = datetime.now().year
+        candidates = [c for c in candidates if c["expiry"].year >= current_year]
+
+        if not candidates:
+            logger.error(f"No current or future {target_inst_type} found for {instrument}")
+            return None
+
+        candidates.sort(key=lambda x: x["expiry"])
+        base_date = ref_date or datetime.now()
+        
+        # 10-Day Rollover Rule:
+        # If nearest expiry is within 10 days, pick the next one if it exists.
+        chosen = candidates[0]
+        if len(candidates) > 1:
+            # Filter for candidates expiring AFTER or ON base_date
+            valid_candidates = [c for c in candidates if c["expiry"].date() >= base_date.date()]
+            if not valid_candidates:
+                return {"symbol": candidates[-1]["symbol"], "token": candidates[-1]["token"]}
+                
+            chosen = valid_candidates[0]
+            if allow_rollover and len(valid_candidates) > 1:
+                days_to_expiry = (valid_candidates[0]["expiry"] - base_date).days
+                if days_to_expiry < 10:
+                    chosen = valid_candidates[1]
+                    logger.info(f"Rollover logic (as of {base_date.date()}): {instrument} near-month expiry in {days_to_expiry} days. Using {chosen['symbol']}.")
+        
+        return {"symbol": chosen["symbol"], "token": chosen["token"]}
 
     def disconnect(self):
         try:

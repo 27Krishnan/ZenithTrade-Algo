@@ -173,6 +173,9 @@ class LTPPoller:
 
                 # Push to engine for entry/exit checking
                 engine.process_ltp(trade.id, ltp)
+                
+                # Rate limit protection: small sleep between trade polls
+                time.sleep(0.5)
 
         finally:
             db.close()
@@ -218,4 +221,4 @@ class LTPPoller:
 
 
 # Singleton
-ltp_poller = LTPPoller(interval=5)
+ltp_poller = LTPPoller(interval=60)

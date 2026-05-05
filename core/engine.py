@@ -13,6 +13,7 @@ Flow:
 5. End-of-session → close remaining intraday positions
 """
 import json
+import os
 from datetime import datetime
 from typing import Optional
 from collections import defaultdict
@@ -102,11 +103,53 @@ class PaperTradingEngine:
             targets = signal.get("targets", [])
             action = signal.get("action", "BUY").upper()
 
+            # Robust Lot Size Lookup
+            actual_lot_size = lot_size
+            if (not actual_lot_size or actual_lot_size <= 1) and signal.get("exchange") == "NFO":
+                try:
+                    symbol = signal.get("symbol", "")
+                    # Extract root symbol (e.g. CIPLA from CIPLA1360PE)
+                    import re
+                    match = re.match(r'^([A-Z\-&]+)', symbol)
+                    root_symbol = match.group(1) if match else symbol
+                    
+                    # 1. Check curated stock_lots.json
+                    STOCK_LOTS_FILE = "data/stock_lots.json"
+                    if os.path.exists(STOCK_LOTS_FILE):
+                        with open(STOCK_LOTS_FILE, "r") as f:
+                            stock_lots = json.load(f)
+                            if root_symbol in stock_lots:
+                                actual_lot_size = stock_lots[root_symbol]
+                                logger.info(f"Fixed Lot Size for {symbol} from stock_lots.json: {actual_lot_size}")
+                    
+                    # 2. If still 1, fallback to Angel Master
+                    if actual_lot_size <= 1:
+                        from data.angel_api import angel_api
+                        token = angel_api.get_token(signal.get("exchange", "NFO"), symbol)
+                        if token:
+                            from api.option_chain import load_master
+                            master = load_master()
+                            inst = next((i for i in master if i.get("token") == token), None)
+                            if inst and inst.get("lotsize"):
+                                actual_lot_size = int(inst.get("lotsize"))
+                                logger.info(f"Auto-fixed Lot Size for {symbol} from Master: {actual_lot_size}")
+                        
+                    # 3. Last fallback for indices
+                    if actual_lot_size <= 1:
+                        from api.option_chain import LOT_SIZES
+                        actual_lot_size = LOT_SIZES.get(root_symbol, 1)
+
+                except Exception as e:
+                    logger.warning(f"Failed to lookup lot size for {signal.get('symbol')}: {e}")
+
             # Quantity
             qty = signal.get("quantity")
-            if not qty:
+            if not qty or qty <= 1:
                 from parsers.signal_parser import signal_parser
-                qty = signal_parser.calculate_quantity(signal, lot_size)
+                qty = signal_parser.calculate_quantity(signal, actual_lot_size)
+                # If signal_parser returned 1 (likely meaning 1 lot), use actual_lot_size
+                if not qty or qty <= 1:
+                    qty = actual_lot_size
 
             # Trailing SL setup – only when SL is provided
             tsl_points = None
@@ -126,7 +169,7 @@ class PaperTradingEngine:
                 entry_price=entry,
                 entry_type=signal.get("entry_type", "LIMIT"),
                 quantity=qty,
-                lot_size=lot_size,
+                lot_size=actual_lot_size,
                 stop_loss=sl or 0.0,
                 target1=targets[0] if len(targets) > 0 else None,
                 target2=targets[1] if len(targets) > 1 else None,
@@ -221,9 +264,12 @@ class PaperTradingEngine:
             trade.entry_triggered_at = get_now_ist()
             trade.highest_price = ltp if trade.action == "BUY" else trade.highest_price
             trade.lowest_price = ltp if trade.action == "SELL" else trade.lowest_price
-            msg = f"Order Executed @ {ltp:.2f}. Condition met for {trade.entry_type} {trade.entry_price}"
+            
+            # Log the exact condition that triggered it
+            msg = f"Order Executed @ {ltp:.2f}. Condition: {trade.action} {trade.entry_type} {trade.entry_price}"
             self._add_audit_log(trade, msg, type="EXECUTED", ltp=ltp)
-            logger.info(f"Trade #{trade.id} OPENED | {trade.action} {trade.symbol} @ {ltp}")
+            
+            logger.info(f"Trade #{trade.id} OPENED | {trade.action} {trade.symbol} @ {ltp} (Condition: {trade.entry_type} {trade.entry_price})")
             self._notify(trade, f"ENTRY | {trade.action} {trade.symbol} @ {ltp:.2f}")
 
     def _check_exit(self, trade: Trade, ltp: float, db: Session) -> str | None:

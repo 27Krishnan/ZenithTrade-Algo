@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strategy Center</title>
+  <style>
+    :root{
+      --bg:#0b0d14;
+      --panel:#121726;
+      --panel-2:#171d30;
+      --line:#242c45;
+      --text:#ecf2ff;
+      --muted:#8090b2;
+      --accent:#27c3a7;
+      --warn:#ffd166;
+      --danger:#ff647c;
+      --gold:#d4af37;
+      --silver:#9fb0c0;
+      --gas:#27c3a7;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:"Segoe UI",system-ui,sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(39,195,167,.12), transparent 22%),
+        radial-gradient(circle at top left, rgba(212,175,55,.10), transparent 18%),
+        var(--bg);
+      color:var(--text);
+    }
+    a{color:inherit}
+    .page{max-width:100%;margin:0;padding:24px 22px 40px}
+    .hero{
+      display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+      margin-bottom:18px;padding:20px 22px;border:1px solid var(--line);border-radius:18px;
+      background:linear-gradient(135deg, rgba(18,23,38,.94), rgba(24,30,48,.92));
+      box-shadow:0 14px 30px rgba(0,0,0,.18);
+    }
+    .hero h1{margin:0 0 6px;font-size:30px;letter-spacing:.2px}
+    .hero p{margin:0;color:var(--muted);max-width:760px;line-height:1.55}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;
+      background:var(--accent);color:#092019
+    }
+    .btn.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+    .card,.panel{
+      background:rgba(18,23,38,.96);border:1px solid var(--line);border-radius:16px;
+      box-shadow:0 12px 26px rgba(0,0,0,.12)
+    }
+    .card{padding:16px 18px}
+    .card .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .card .value{font-size:30px;font-weight:800;margin-top:4px}
+    .layout{display:grid;grid-template-columns:280px 1fr;gap:16px}
+    .panel{padding:16px 18px}
+    .panel h2{margin:0 0 14px;font-size:16px}
+    .strategy-list{display:flex;flex-direction:column;gap:10px}
+    .strategy-pill{
+      width:100%;text-align:left;padding:14px;border-radius:14px;border:1px solid var(--line);
+      background:var(--panel-2);color:var(--text);cursor:pointer;transition:.18s
+    }
+    .strategy-pill.active{transform:translateY(-1px);border-color:var(--accent);box-shadow:0 10px 20px rgba(39,195,167,.10)}
+    .strategy-pill .meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .strategy-pill .name{font-weight:800}
+    .strategy-pill .tag{font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted)}
+    .strategy-pill .stats{display:flex;gap:10px;font-size:12px;color:var(--muted)}
+    .content{display:grid;gap:16px}
+    .instrument-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+    .inst{
+      padding:16px;border-radius:16px;background:var(--panel-2);border:1px solid var(--line);
+      transition:transform .2s, border-color .2s;
+    }
+    .inst:hover{transform:translateY(-2px);border-color:var(--accent)}
+    .inst-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
+    .inst-name{font-size:18px;font-weight:800}
+    .inst-symbol{font-size:12px;color:var(--muted)}
+    .ltp{font-size:24px;font-weight:800}
+    .state-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+    .chip{
+      padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid transparent
+    }
+    .chip.pending{background:rgba(255,209,102,.12);border-color:rgba(255,209,102,.24);color:var(--warn)}
+    .chip.active{background:rgba(39,195,167,.12);border-color:rgba(39,195,167,.24);color:var(--accent)}
+    .chip.closed{background:rgba(128,144,178,.12);border-color:rgba(128,144,178,.24);color:var(--muted)}
+    .chip.gap{background:rgba(255,100,124,.12);border-color:rgba(255,100,124,.22);color:var(--danger)}
+    .inst-meta{font-size:12px;color:var(--muted);display:grid;gap:4px}
+    .split{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+    .form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    .field label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+    .field input,.field select{
+      background:#0d1220;border:1px solid var(--line);color:var(--text);border-radius:10px;
+      padding:10px 12px;font-size:14px
+    }
+    .stack{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .result-box,.history-box{
+      background:#0d1220;border:1px solid var(--line);border-radius:14px;padding:14px;min-height:160px
+    }
+    .result-box pre{
+      margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.5;color:#dce6ff
+    }
+    .events{display:grid;gap:8px;max-height:420px;overflow:auto}
+    .event{
+      padding:10px 12px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);font-size:13px
+    }
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left}
+    th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    tr:hover td{background:rgba(255,255,255,.02)}
+    .pnl.pos{color:var(--accent);font-weight:800}
+    .pnl.neg{color:var(--danger);font-weight:800}
+    .muted{color:var(--muted)}
+    .status-line{font-size:12px;color:var(--muted);margin-top:6px}
+    .error{color:var(--danger)}
+    .status-badge{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;font-size:13px;font-weight:700}
+    .status-badge.ok{background:rgba(39,195,167,.12);color:var(--accent);border:1px solid rgba(39,195,167,.3)}
+    .status-badge.err{background:rgba(255,100,124,.12);color:var(--danger);border:1px solid rgba(255,100,124,.3)}
+    .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+    @media (max-width: 1180px){
+      .layout,.split{grid-template-columns:1fr}
+      .instrument-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @media (max-width: 740px){
+      .page{padding:16px}
+      .hero{flex-direction:column}
+      .cards,.instrument-grid,.form-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <h1>Strategy Center</h1>
+          <div id="api-status" class="status-badge">
+            <div class="dot"></div>
+            <span>Checking Connection...</span>
+          </div>
+        </div>
+        <p>Gold, Silver, Natural Gas மற்றும் அடுத்த strategy modules எல்லாமே ஒரே main system-ல பார்க்க இந்த screen. Live state, history, manual fetch, backtest output இங்க இருந்து run பண்ணலாம்.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="btn alt" id="view-workflow" style="border-color:var(--gold); color:var(--gold)">📂 View Workflow</button>
+        <button class="btn" id="refresh-all">Refresh</button>
+        <a class="btn alt" href="/">Main Dashboard</a>
+      </div>
+    </section>
+
+    <section class="cards">
+      <div class="card"><div class="label">Strategies</div><div class="value" id="sum-strategies">0</div></div>
+      <div class="card"><div class="label">Tracked Instruments</div><div class="value" id="sum-instruments">0</div></div>
+      <div class="card"><div class="label">Active Positions</div><div class="value" id="sum-active">0</div></div>
+      <div class="card"><div class="label">Pending / Gap</div><div class="value" id="sum-pending">0</div></div>
+    </section>
+
+    <section class="layout">
+      <aside class="panel">
+        <h2>Strategy Modules</h2>
+        <div class="strategy-list" id="strategy-list"></div>
+      </aside>
+
+      <div class="content">
+        <section class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div>
+              <h2 id="focus-title" style="margin:0">Live Overview</h2>
+              <div class="status-line" id="focus-status" style="margin-top:4px"></div>
+            </div>
+            <div id="settings-fields" style="display:none; flex-direction:row; gap:15px; background:rgba(39,195,167,0.05); padding:10px 15px; border-radius:12px; border:1px solid rgba(39,195,167,0.2); font-size:12px; align-items:center;">
+              <span style="font-weight:700; color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-right:5px;">Telegram Alerts:</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="set-tg-morning" class="st-check">
+                  <label for="set-tg-morning" style="cursor:pointer">Briefing</label>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="set-tg-open" class="st-check">
+                  <label for="set-tg-open" style="cursor:pointer">Mkt Open</label>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="set-tg-entry" class="st-check">
+                  <label for="set-tg-entry" style="cursor:pointer">Entries</label>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="set-tg-exit" class="st-check">
+                  <label for="set-tg-exit" style="cursor:pointer">Target/SL</label>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" id="set-tg-gap" class="st-check">
+                  <label for="set-tg-gap" style="cursor:pointer">Gap</label>
+              </div>
+              <div id="settings-status" style="font-size:10px; color:var(--accent); margin-left:10px; min-width:80px"></div>
+            </div>
+          </div>
+          <div class="instrument-grid" id="instrument-grid"></div>
+        </section>
+
+        <section class="split">
+          <div class="panel">
+            <h2>Backtest Runner</h2>
+            <div class="form-grid">
+              <div class="field">
+                <label>Strategy</label>
+                <select id="bt-strategy"></select>
+              </div>
+              <div class="field">
+                <label>Instrument</label>
+                <select id="bt-instrument"></select>
+              </div>
+              <div class="field">
+                <label>Date</label>
+                <input id="bt-date" type="date" />
+              </div>
+            </div>
+            <div class="stack">
+              <button class="btn" id="run-backtest">Run Backtest</button>
+              <button class="btn alt" id="run-fetch">Fetch Now</button>
+            </div>
+            <div class="result-box" style="margin-top:14px">
+              <div id="backtest-summary" style="font-family: var(--font-base); font-size: 14px; color: var(--text)">No backtest executed yet.</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Backtest Events</h2>
+            <div class="events" id="events-box">
+              <div class="muted">Events will appear here after a backtest.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2>Recent History</h2>
+            <div style="display:flex; gap:10px;">
+              <input type="text" id="history-search" placeholder="Search instrument..." style="padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2); color:var(--text); font-size:12px; width:180px;">
+              <select id="history-pnl-filter" style="padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2); color:var(--text); font-size:12px;">
+                <option value="all">All P&L</option>
+                <option value="profit">Profit Only (> 0)</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Exec Date</th>
+                  <th>BT Date</th>
+                  <th>Strategy</th>
+                  <th>Instrument</th>
+                  <th>Long</th>
+                  <th>Short</th>
+                  <th>Total P&L</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <tr><td colspan="8" class="muted">Loading history...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <div id="workflow-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:1000; padding:20px; overflow:auto; backdrop-filter:blur(12px);">
+    <div style="max-width:1100px; margin:20px auto; background:var(--panel); border:1px solid var(--line); border-radius:24px; padding:0; position:relative; box-shadow:0 30px 80px rgba(0,0,0,0.8); overflow:hidden;">
+      
+      <!-- Modal Header -->
+      <div style="padding:30px 40px; background:linear-gradient(90deg, rgba(212,175,55,0.05), transparent); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:20px;">
+          <div style="font-size:32px; background:rgba(212,175,55,0.1); width:64px; height:64px; display:flex; align-items:center; justify-content:center; border-radius:16px; border:1px solid rgba(212,175,55,0.2);">⚙️</div>
+          <div>
+            <h2 style="margin:0; font-size:26px; color:var(--gold); letter-spacing:0.5px; font-weight:800; text-transform:uppercase;">Strategy Execution Workflows</h2>
+            <p style="margin:0; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:4px;">Technical Logic • Timing • Recovery Engine</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('workflow-modal').style.display='none'" style="background:rgba(255,255,255,0.05); border:1px solid var(--line); color:var(--text); width:44px; height:44px; border-radius:50%; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.background='var(--danger)'; this.style.borderColor='var(--danger)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='var(--line)'">&times;</button>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div style="display:flex; background:rgba(0,0,0,0.2); border-bottom:1px solid var(--line); padding:0 20px;">
+        <button class="workflow-tab active" onclick="switchWorkflowTab('nifty', this)" style="padding:18px 25px; background:none; border:none; border-bottom:3px solid var(--accent); color:var(--accent); font-weight:800; font-size:14px; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.2s;">NIFTY</button>
+        <button class="workflow-tab" onclick="switchWorkflowTab('gold', this)" style="padding:18px 25px; background:none; border:none; border-bottom:3px solid transparent; color:var(--muted); font-weight:800; font-size:14px; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.2s;">GOLD</button>
+        <button class="workflow-tab" onclick="switchWorkflowTab('silver', this)" style="padding:18px 25px; background:none; border:none; border-bottom:3px solid transparent; color:var(--muted); font-weight:800; font-size:14px; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.2s;">SILVER</button>
+        <button class="workflow-tab" onclick="switchWorkflowTab('ng', this)" style="padding:18px 25px; background:none; border:none; border-bottom:3px solid transparent; color:var(--muted); font-weight:800; font-size:14px; cursor:pointer; text-transform:uppercase; letter-spacing:1px; transition:0.2s;">NATURAL GAS</button>
+      </div>
+
+      <div style="padding:40px; max-height:75vh; overflow-y:auto; background:var(--bg);">
+        
+        <!-- ======================== INSTRUMENT: NIFTY ======================== -->
+        <div id="flow-nifty" class="workflow-content">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            
+            <!-- 1. MARKET TIMINGS -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">1. MARKET TIMINGS</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Normal Session:</b> 09:15 AM – 03:30 PM<br>
+                    🕒 <b>Pre-Open Calc:</b> 09:05 AM (Levels Locked)
+                </div>
+            </div>
+
+            <!-- 2. PRE-MARKET -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">2. PRE-MARKET LOGIC</h4>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--accent); font-family:monospace; font-size:12px;">
+                    H2 = Max(High_D1, High_D2)<br>
+                    L2 = Min(Low_D1, Low_D2)<br>
+                    Buffer = Price * 0.125%
+                </code>
+            </div>
+
+            <!-- 3. ENTRY -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">3. ENTRY TRIGGER</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Execution:</b> 09:16:00 AM (Sharp)<br>
+                    <b>Long:</b> LTP > H2 + Buffer<br>
+                    <b>Short:</b> LTP < L2 - Buffer
+                </div>
+            </div>
+
+            <!-- 4. TARGET -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">4. TARGET LOGIC</h4>
+                <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">🕒 <b>Active From:</b> 09:16:00 AM (Immediate)</div>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--accent); font-family:monospace; font-size:12px;">
+                    Target 1: Entry ± 1.25%<br>
+                    Target 2: Entry ± 1.25%
+                </code>
+            </div>
+
+            <!-- 5. STOP LOSS (PHASE 1 vs 2) -->
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 12px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">5. STOP LOSS (PHASE 1 vs 2) • EXACT LOGIC</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <!-- Phase 1 -->
+                    <div style="background:rgba(0,0,0,0.2); padding:18px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                        <b style="color:var(--text); font-size:14px; display:block; margin-bottom:5px;">Phase 1 (Both Lots)</b>
+                        <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">🕒 <b>Set At:</b> 09:16:00 AM (On Entry)</div>
+                        <div style="font-size:12px; color:var(--muted); line-height:1.6;">
+                            🛠️ <b>Long:</b> Max( (E-1.25%), (L2-0.125%) )<br>
+                            🛠️ <b>Short:</b> Min( (E+1.25%), (H2+0.125%) )
+                        </div>
+                    </div>
+                    <!-- Phase 2 -->
+                    <div style="background:rgba(39,195,167,0.1); padding:18px; border-radius:12px; border:1px solid var(--accent);">
+                        <b style="color:var(--accent); font-size:14px; display:block; margin-bottom:5px;">Phase 2 (Lot 2 Only)</b>
+                        <div style="font-size:11px; color:var(--text); margin-bottom:10px;">🕒 <b>Trigger:</b> When Target 1 hits (Real-time)</div>
+                        <div style="font-size:12px; color:var(--text); line-height:1.6;">
+                            🛠️ <b>Action:</b> SL moves to <b>COST</b> immediately.<br>
+                            🛠️ <b>New SL:</b> Max/Min( ENTRY, H2/L2 Boundary )
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. GAP LOGIC -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--danger); text-transform:uppercase; letter-spacing:1px;">6. GAP LOGIC</h4>
+                <div style="font-size:12px; color:var(--muted);">If Price breaches levels between 09:15:00 and 09:16:00, automation flags "GAP".</div>
+            </div>
+
+            <!-- 7. GAP MONITORING -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;">7. GAP MONITORING</h4>
+                <div style="font-size:12px; color:var(--text);">60s Window (09:15-09:16). System polls LTP for breaches before execution.</div>
+            </div>
+
+            <!-- 8. GAP RECOVERY -->
+            <div style="background:rgba(212,175,55,0.05); border:1px dashed var(--gold); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">8. GAP RECOVERY</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">🕒 <b>Calculation:</b> 09:30:05 AM (Exact)</div>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--gold); font-family:monospace; font-size:11px;">
+                    New Entry: 15m_High + 0.125%<br>
+                    Recovery SL: 15m_Low - 0.125%<br>
+                    Active From: 09:30:05 AM
+                </code>
+            </div>
+
+            <!-- 9. FINAL FLOW -->
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--text); text-transform:uppercase; letter-spacing:1px;">9. FINAL FLOW</h4>
+                <div style="font-size:11px; color:var(--muted); font-family:monospace; line-height:1.4;">
+                    [09:05 Calc] → [09:15 Spike Check]<br>
+                    ↓ (No Gap)<br>
+                    [09:16 Entry] → [T1 Hit] → [SL to Cost]
+                </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ======================== INSTRUMENT: GOLD ======================== -->
+        <div id="flow-gold" class="workflow-content" style="display:none;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">1. MARKET TIMINGS</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Morn Session:</b> 09:00 AM – 05:00 PM<br>
+                    🕒 <b>Eve Session:</b> 05:00 PM – 11:30 PM
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">2. PRE-MARKET (07:50 AM)</h4>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--gold); font-family:monospace; font-size:12px;">
+                    H4 = Max(Prev 4 Days Highs)<br>
+                    L4 = Min(Prev 4 Days Lows)<br>
+                    Buffer = Price * 0.12%
+                </code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">3. ENTRY TRIGGER</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Morning:</b> 09:10:00 AM Sharp<br>
+                    🕒 <b>Evening:</b> 05:10:00 PM Sharp
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">4. TARGET LOGIC</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">🕒 <b>Active From:</b> 09:10 AM / 05:10 PM</div>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--gold); font-family:monospace; font-size:12px;">
+                    Target 1: Entry ± 1.5%<br>
+                    Target 2: Entry ± 1.5%
+                </code>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 12px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">5. STOP LOSS (PHASE 1 vs 2)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                        <b style="color:var(--text); font-size:13px;">Phase 1 (Initial)</b><br>
+                        <div style="font-size:11px; color:var(--muted); margin:5px 0;">🕒 <b>Set At:</b> 09:10 AM / 05:10 PM</div>
+                        <div style="font-size:11px; font-family:monospace; color:var(--gold);">
+                            Long SL: Max( (E-1.5%), (L2-0.12%) )<br>
+                            Short SL: Min( (E+1.5%), (H2+0.12%) )
+                        </div>
+                    </div>
+                    <div style="background:rgba(39,195,167,0.1); padding:15px; border-radius:12px; border:1px solid var(--accent);">
+                        <b style="color:var(--accent); font-size:13px;">Phase 2 (Lot 2)</b><br>
+                        <div style="font-size:11px; color:var(--text); margin:5px 0;">🕒 <b>Trigger:</b> When Target 1 hits</div>
+                        <div style="font-size:11px; font-family:monospace;">
+                            Long SL: Max( (E-1.5%), (L4-0.12%) )<br>
+                            Short SL: Min( (E+1.5%), (H4+0.12%) )
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--danger); text-transform:uppercase; letter-spacing:1px;">6. GAP LOGIC</h4>
+                <div style="font-size:12px; color:var(--muted);">Breach in 09:00-09:10 window or 05:00-05:10 triggers GAP state.</div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;">7. GAP MONITORING</h4>
+                <div style="font-size:12px; color:var(--text);">Execution lock window: 09:00 – 09:10 AM & 05:00 – 05:10 PM.</div>
+            </div>
+
+            <div style="background:rgba(212,175,55,0.05); border:1px dashed var(--gold); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">8. GAP RECOVERY (MORN)</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">🕒 <b>Calculation:</b> 09:15:05 AM</div>
+                <code style="font-size:11px; color:var(--gold);">New Entry = 15m_High + 0.12%</code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">9. EVENING SESSION</h4>
+                <div style="font-size:12px; color:var(--text);">🕒 05:00 PM Open. Monitoring for spikes until 05:10 PM.</div>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px dashed var(--accent); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">10. EVENING RECOVERY</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">🕒 <b>Calculation:</b> 05:15:05 PM</div>
+                <code style="font-size:11px; color:var(--accent);">New Entry = 15m_High + 0.12%</code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">12. HOLDING TARGET LOGIC (OVERNIGHT)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>Trigger:</b> 09:00:00 AM (Market Open)<br>
+                        🛠️ <b>Condition:</b> If LTP gaps beyond Target.<br>
+                        ✅ <b>Action:</b> Lot 1 closes @ Open Price. Lot 2 SL moves to <b>Entry Price (Cost)</b>.
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>SL Protection:</b> 09:00:00 AM<br>
+                        🛠️ <b>Condition:</b> If LTP gaps beyond SL.<br>
+                        ⚠️ <b>Rule:</b> System waits for 09:15 AM Recovery instead of exiting at a huge loss.
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">13. GAP RECOVERY SL LOGIC</h4>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; color:var(--text);">
+                        <tr style="border-bottom:1px solid var(--line);">
+                            <th style="text-align:left; padding:10px;">Scenario</th>
+                            <th style="text-align:left; padding:10px;">Execution Time</th>
+                            <th style="text-align:left; padding:10px;">SL Formula (Gold Example)</th>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px;">Morning Recovery</td>
+                            <td style="padding:10px; color:var(--gold);">09:15:05 AM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 1.5%), (L2 - 0.12%) )</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px;">Evening Recovery</td>
+                            <td style="padding:10px; color:var(--gold);">05:15:05 PM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 1.5%), (L2 - 0.12%) )</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase;">14. EVENING RECOVERY (FULL DETAIL)</h4>
+                <div style="font-size:12px; color:var(--muted); line-height:1.6;">
+                    🕒 <b>Trigger:</b> 05:15:05 PM (Calculated from 17:00 15m Candle).<br>
+                    🛠️ <b>Target:</b> <code style="color:var(--accent);">New Entry ± 1.5%</code><br>
+                    🛡️ <b>Stop Loss:</b> <code style="color:var(--accent);">Opposite 15m Boundary ∓ 0.12% Buffer</code><br>
+                    <span style="display:block; margin-top:5px; color:var(--text);">This recovery only triggers if the Morning session was skipped due to a gap.</span>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--text); text-transform:uppercase; letter-spacing:1px;">15. FINAL FLOW (COMPLETE CYCLE)</h4>
+                <div style="font-size:11px; font-family:monospace; color:var(--muted); line-height:1.5;">
+                    [07:50 Calc] → [09:00 Open Check] → [09:10 Entry/Holding Update]<br>
+                    ↓ (Gap?) → [09:15 Morn Recovery] → [Active Monitoring]<br>
+                    ↓ (Eve Gap?) → [05:15 Eve Recovery] → [EOD Exit @ 11:30 PM]
+                </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ======================== INSTRUMENT: SILVER ======================== -->
+        <div id="flow-silver" class="workflow-content" style="display:none;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">1. MARKET TIMINGS</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 09:00 AM – 05:00 PM (Morning)<br>
+                    🕒 05:00 PM – 11:30 PM (Evening)
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">2. PRE-MARKET (07:50 AM)</h4>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--silver); font-family:monospace; font-size:12px;">
+                    H4 = Max(Prev 4 Highs) | L4 = Min(Low)<br>
+                    Buffer = 0.12% | Entry = H4/L4 ± Buffer
+                </code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">3. ENTRY TRIGGER</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Morning:</b> 09:10:00 AM Sharp<br>
+                    🕒 <b>Evening:</b> 05:10:00 PM Sharp
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">4. TARGET LOGIC</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">🕒 <b>Active From:</b> 09:10 AM / 05:10 PM</div>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--silver); font-family:monospace; font-size:12px;">
+                    Target 1: Entry ± 2.0%<br>
+                    Target 2: Entry ± 2.0%
+                </code>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 12px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">5. STOP LOSS (PHASE 1 vs 2)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                        <b style="color:var(--text); font-size:13px;">Phase 1 (Initial)</b><br>
+                        <div style="font-size:11px; color:var(--muted); margin:5px 0;">🕒 <b>Set At:</b> 09:10 AM / 05:10 PM</div>
+                        <div style="font-size:11px; font-family:monospace; color:var(--silver);">
+                            Long SL: Max( (E-2.0%), (L2-0.12%) )<br>
+                            Short SL: Min( (E+2.0%), (H2+0.12%) )
+                        </div>
+                    </div>
+                    <div style="background:rgba(39,195,167,0.1); padding:15px; border-radius:12px; border:1px solid var(--accent);">
+                        <b style="color:var(--accent); font-size:13px;">Phase 2 (Lot 2)</b><br>
+                        <div style="font-size:11px; color:var(--text); margin:5px 0;">🕒 <b>Trigger:</b> When Target 1 hits</div>
+                        <div style="font-size:11px; font-family:monospace;">
+                            Long SL: Max( (E-2.0%), (L4-0.12%) )<br>
+                            Short SL: Min( (E+2.0%), (H4+0.12%) )
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--danger); text-transform:uppercase; letter-spacing:1px;">6-7. GAP MONITORING</h4>
+                <div style="font-size:12px; color:var(--muted);">10-Min window (09:00 & 17:00). All automation paused during spikes.</div>
+            </div>
+
+            <div style="background:rgba(212,175,55,0.05); border:1px dashed var(--gold); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">8. GAP RECOVERY (MORN)</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">🕒 <b>Calculation:</b> 09:15:05 AM</div>
+                <code style="font-size:11px; color:var(--silver);">New Entry = 15m_High + 0.12%</code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">9-10. EVENING RECOVERY</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">🕒 <b>Calculation:</b> 05:15:05 PM</div>
+                <code style="font-size:11px; color:var(--accent);">Calculated from 17:00 15m candle.</code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">12. HOLDING TARGET LOGIC (OVERNIGHT)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>Trigger:</b> 09:00:00 AM<br>
+                        🛠️ <b>Condition:</b> LTP gaps beyond 2.0% Target.<br>
+                        ✅ <b>Action:</b> Lot 1 closes immediately. Lot 2 SL to <b>Cost</b>.
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>Protection:</b> 09:00:00 AM<br>
+                        🛠️ <b>Condition:</b> LTP gaps beyond 2.0% SL.<br>
+                        ⚠️ <b>Rule:</b> Wait for 09:15 AM Recovery candle.
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:rgba(159,176,192,0.05); border:1px solid rgba(159,176,192,0.3); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--silver); text-transform:uppercase; letter-spacing:1px;">13. GAP RECOVERY SL LOGIC</h4>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; color:var(--text);">
+                        <tr style="border-bottom:1px solid var(--line);">
+                            <th style="text-align:left; padding:10px;">Scenario</th>
+                            <th style="text-align:left; padding:10px;">Execution Time</th>
+                            <th style="text-align:left; padding:10px;">SL Formula (Silver)</th>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px;">Morning Recovery</td>
+                            <td style="padding:10px; color:var(--silver);">09:15:05 AM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 2.0%), (L2 - 0.12%) )</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px;">Evening Recovery</td>
+                            <td style="padding:10px; color:var(--silver);">05:15:05 PM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 2.0%), (L2 - 0.12%) )</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase;">14. EVENING RECOVERY (FULL DETAIL)</h4>
+                <div style="font-size:12px; color:var(--muted); line-height:1.6;">
+                    🕒 <b>Trigger:</b> 05:15:05 PM (Post Evening Spike Monitoring).<br>
+                    🛠️ <b>Target:</b> <code style="color:var(--silver);">New Entry ± 2.0%</code><br>
+                    🛡️ <b>Stop Loss:</b> <code style="color:var(--silver);">15m Boundary ∓ 0.12% Buffer</code><br>
+                    <span style="display:block; margin-top:5px; color:var(--text);">Recovery is only attempted if morning entry levels were breached by a gap.</span>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--text); text-transform:uppercase; letter-spacing:1px;">15. FINAL FLOW</h4>
+                <div style="font-size:11px; font-family:monospace; color:var(--muted); line-height:1.5;">
+                    [Fetch L4] → [Morn Gap Check] → [Entry/Recovery]<br>
+                    ↓ [Holding Update] → [Eve Gap Check] → [Eve Recovery] → [Close]
+                </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ======================== INSTRUMENT: NATURAL GAS ======================== -->
+        <div id="flow-ng" class="workflow-content" style="display:none;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gas); text-transform:uppercase; letter-spacing:1px;">1. MARKET TIMINGS</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 09:00 AM – 05:00 PM (Morning)<br>
+                    🕒 05:00 PM – 11:30 PM (Evening)
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gas); text-transform:uppercase; letter-spacing:1px;">2. PRE-MARKET (07:50 AM)</h4>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--gas); font-family:monospace; font-size:12px;">
+                    H3 = Max(Prev 3 Days Highs) | L3 = Min(Low)<br>
+                    Buffer = 0.40% | Entry = H3/L3 ± Buffer
+                </code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gas); text-transform:uppercase; letter-spacing:1px;">3. ENTRY TRIGGER</h4>
+                <div style="font-size:13px; color:var(--text);">
+                    🕒 <b>Morning:</b> 09:10:00 AM Sharp<br>
+                    🕒 <b>Evening:</b> 05:10:00 PM Sharp
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gas); text-transform:uppercase; letter-spacing:1px;">4. TARGET LOGIC</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">🕒 <b>Active From:</b> 09:10 AM / 05:10 PM</div>
+                <code style="display:block; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; color:var(--gas); font-family:monospace; font-size:12px;">
+                    Target 1: Entry ± 4.0%<br>
+                    Target 2: Entry ± 4.0%
+                </code>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 12px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">5. STOP LOSS (PHASE 1 vs 2)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                        <b style="color:var(--text); font-size:13px;">Phase 1 (Initial)</b><br>
+                        <div style="font-size:11px; color:var(--muted); margin:5px 0;">🕒 <b>Set At:</b> 09:10 AM / 05:10 PM</div>
+                        <div style="font-size:11px; font-family:monospace; color:var(--gas);">
+                            Long SL: Max( (E-4.0%), (L2-0.40%) )<br>
+                            Short SL: Min( (E+4.0%), (H2+0.40%) )
+                        </div>
+                    </div>
+                    <div style="background:rgba(39,195,167,0.1); padding:15px; border-radius:12px; border:1px solid var(--accent);">
+                        <b style="color:var(--accent); font-size:13px;">Phase 2 (Lot 2)</b><br>
+                        <div style="font-size:11px; color:var(--text); margin:5px 0;">🕒 <b>Trigger:</b> When Target 1 hits</div>
+                        <div style="font-size:11px; font-family:monospace;">
+                            Long SL: Max( (E-4.0%), (L3-0.40%) )<br>
+                            Short SL: Min( (E+4.0%), (H3+0.40%) )
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--danger); text-transform:uppercase; letter-spacing:1px;">6-7. GAP MONITORING</h4>
+                <div style="font-size:12px; color:var(--muted);">Morn (09:00-09:10) & Eve (05:00-05:10).</div>
+            </div>
+
+            <div style="background:rgba(212,175,55,0.05); border:1px dashed var(--gold); border-radius:18px; padding:20px;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--gold); text-transform:uppercase; letter-spacing:1px;">8-10. RECOVERY LOGIC</h4>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:5px;">🕒 09:15 AM & 05:15 PM (Exact)</div>
+                <code style="font-size:11px; color:var(--gas);">New Entry = 15m_High + 0.40%</code>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--gas); text-transform:uppercase; letter-spacing:1px;">12. HOLDING TARGET LOGIC (OVERNIGHT)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>Trigger:</b> 09:00:00 AM<br>
+                        🛠️ <b>Condition:</b> LTP gaps beyond 4.0% Target.<br>
+                        ✅ <b>Action:</b> Lot 1 closes immediately. Lot 2 SL to <b>Cost</b>.
+                    </div>
+                    <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:12px;">
+                        🕒 <b>Protection:</b> 09:00:00 AM<br>
+                        🛠️ <b>Condition:</b> LTP gaps beyond 4.0% SL.<br>
+                        ⚠️ <b>Rule:</b> Wait for 09:15 AM Recovery candle.
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:rgba(39,195,167,0.05); border:1px solid var(--accent); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 15px; font-size:14px; color:var(--accent); text-transform:uppercase; letter-spacing:1px;">13. GAP RECOVERY SL LOGIC</h4>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; color:var(--text);">
+                        <tr style="border-bottom:1px solid var(--line);">
+                            <th style="text-align:left; padding:10px;">Scenario</th>
+                            <th style="text-align:left; padding:10px;">Execution Time</th>
+                            <th style="text-align:left; padding:10px;">SL Formula (Natural Gas)</th>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px;">Morning Recovery</td>
+                            <td style="padding:10px; color:var(--gas);">09:15:05 AM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 4.0%), (L2 - 0.40%) )</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px;">Evening Recovery</td>
+                            <td style="padding:10px; color:var(--gas);">05:15:05 PM</td>
+                            <td style="padding:10px; font-family:monospace;">Max( (New_E - 4.0%), (L2 - 0.40%) )</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--accent); text-transform:uppercase;">14. EVENING RECOVERY (FULL DETAIL)</h4>
+                <div style="font-size:12px; color:var(--muted); line-height:1.6;">
+                    🕒 <b>Trigger:</b> 05:15:05 PM (Post Spike Monitoring).<br>
+                    🛠️ <b>Target:</b> <code style="color:var(--gas);">New Entry ± 4.0%</code><br>
+                    🛡️ <b>Stop Loss:</b> <code style="color:var(--gas);">15m Boundary ∓ 0.40% Buffer</code><br>
+                    <span style="display:block; margin-top:5px; color:var(--text);">Recovery logic uses 0.40% buffer for NG specifically.</span>
+                </div>
+            </div>
+
+            <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:18px; padding:20px; grid-column: span 2;">
+                <h4 style="margin:0 0 10px; font-size:14px; color:var(--text); text-transform:uppercase; letter-spacing:1px;">15. FINAL FLOW</h4>
+                <div style="font-size:11px; font-family:monospace; color:var(--muted); line-height:1.5;">
+                    [Morning Cycle (0.40%)] → [Holding Management] → [Evening Cycle (0.40%)] → [Close]
+                </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+      
+      <div style="padding:20px 40px; background:rgba(0,0,0,0.3); border-top:1px solid var(--line); display:flex; justify-content:center;">
+        <p style="margin:0; font-size:12px; color:var(--muted); font-weight:600;">⚠️ Hyper-Detailed Workflow V3 • 2-Lot Management • Before & After Target Protocols Verified</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchWorkflowTab(slug, btn) {
+        // Update Buttons
+        document.querySelectorAll('.workflow-tab').forEach(b => {
+            b.style.borderBottomColor = 'transparent';
+            b.style.color = 'var(--muted)';
+        });
+        btn.style.borderBottomColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+
+        // Update Content
+        document.querySelectorAll('.workflow-content').forEach(c => c.style.display = 'none');
+        document.getElementById('flow-' + slug).style.display = 'block';
+    }
+  </script>
+
+
+
+  <script>
+    const strategyMeta = {};
+    let overview = null;
+    let focusedStrategy = null;
+    let currentSim = null;
+
+    function stateClass(value){
+      if(value === 'GAP') return 'gap';
+      if(value === 'PENDING') return 'pending';
+      if(value === 'ACTIVE_P1' || value === 'ACTIVE_P2') return 'active';
+      return 'closed';
+    }
+
+    function formatLtp(value){
+      if(value === null || value === undefined) return '—';
+      const num = Number(value);
+      return Number.isFinite(num) ? num.toLocaleString('en-IN', {maximumFractionDigits: 2, minimumFractionDigits: 2}) : '—';
+    }
+
+    function formatPnl(value){
+      const num = Number(value || 0);
+      const cls = num >= 0 ? 'pos' : 'neg';
+      return `<span class="pnl ${cls}">${num.toLocaleString('en-IN', {maximumFractionDigits: 2, minimumFractionDigits: 2})}</span>`;
+    }
+
+    function setSummaryCards(totals){
+      document.getElementById('sum-strategies').textContent = totals.strategies || 0;
+      document.getElementById('sum-instruments').textContent = totals.instruments || 0;
+      document.getElementById('sum-active').textContent = totals.active_positions || 0;
+      document.getElementById('sum-pending').textContent = `${totals.pending_positions || 0} / ${totals.gap_positions || 0}`;
+    }
+
+    function renderStrategyList(){
+      const list = document.getElementById('strategy-list');
+      list.innerHTML = '';
+      (overview?.strategies || []).forEach(item => {
+        const btn = document.createElement('button');
+        btn.className = 'strategy-pill' + (focusedStrategy === item.slug ? ' active' : '');
+        
+        // Split name into [Instrument, Brand] if "•" exists
+        let displayName = item.name;
+        let brandName = "";
+        if (item.name.includes(" • ")) {
+            const parts = item.name.split(" • ");
+            displayName = parts[0];
+            brandName = parts[1];
+        }
+
+        btn.innerHTML = `
+          <div class="meta">
+            <span class="name">${displayName} <small style="font-weight:400; font-size:11px; opacity:0.6; margin-left:6px">${brandName}</small></span>
+            <span class="tag">${item.started ? 'RUNNING' : 'WAITING'}</span>
+          </div>
+          <div class="stats">
+            <span>${item.instrument_count} instruments</span>
+            <span>${item.active_positions} active</span>
+            <span>${item.pending_positions} pending</span>
+          </div>
+          ${item.error ? `<div class="status-line error">${item.error}</div>` : ''}
+        `;
+        btn.style.borderLeft = `4px solid ${item.color}`;
+        btn.onclick = () => {
+          focusedStrategy = item.slug;
+          document.getElementById('bt-strategy').value = focusedStrategy;
+          renderStrategyList();
+          renderFocused();
+          syncBacktestForm();
+          loadStrategySettings(item.slug);
+        };
+        list.appendChild(btn);
+      });
+    }
+
+    function renderFocused(){
+      const current = (overview?.strategies || []).find(item => item.slug === focusedStrategy) || overview?.strategies?.[0];
+      if(!current) return;
+      focusedStrategy = current.slug;
+      document.getElementById('focus-title').textContent = `${current.name} Overview`;
+      document.getElementById('focus-status').textContent = current.started
+        ? `${current.active_positions} active positions, ${current.pending_positions} pending legs, ${current.gap_positions} gap states`
+        : (current.error || 'Runtime not started');
+
+      const grid = document.getElementById('instrument-grid');
+      grid.innerHTML = '';
+      current.instruments.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'inst';
+        card.innerHTML = `
+          <div class="inst-head">
+            <div>
+              <div class="inst-name">${item.instrument}</div>
+              <div class="inst-symbol">${item.trading_symbol || '<span style="color:var(--warn)">Pending...</span>'}</div>
+            </div>
+            <div class="ltp">${(item.ltp !== null && item.ltp !== undefined && item.ltp !== 0) ? formatLtp(item.ltp) : '<span style="font-size:14px;color:var(--muted)">Waiting...</span>'}</div>
+          </div>
+          <div class="state-row">
+            <span class="chip ${stateClass(item.long_state)}">L ${item.long_state}</span>
+            <span class="chip ${stateClass(item.short_state)}">S ${item.short_state}</span>
+          </div>
+          <div class="inst-meta">
+            <div>Auto Trade: ${item.auto_trade ? 'ON' : 'OFF'}</div>
+            <div>Last Update: ${item.last_update || '—'}</div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function syncBacktestForm(){
+      const strategySelect = document.getElementById('bt-strategy');
+      const instrumentSelect = document.getElementById('bt-instrument');
+      const selected = strategySelect.value || focusedStrategy;
+      const meta = strategyMeta[selected];
+      instrumentSelect.innerHTML = '';
+      (meta?.instruments || []).forEach(inst => {
+        const opt = document.createElement('option');
+        opt.value = inst;
+        opt.textContent = inst;
+        instrumentSelect.appendChild(opt);
+      });
+    }
+
+    async function loadStrategies(){
+      const res = await fetch('/api/strategy-hub/strategies');
+      const data = await res.json();
+      const select = document.getElementById('bt-strategy');
+      select.innerHTML = '';
+      data.forEach(item => {
+        strategyMeta[item.slug] = item;
+        const opt = document.createElement('option');
+        opt.value = item.slug;
+        opt.textContent = item.name;
+        select.appendChild(opt);
+      });
+      if(!focusedStrategy && data.length){
+        focusedStrategy = data[0].slug;
+        select.value = focusedStrategy;
+      }
+      syncBacktestForm();
+      select.onchange = () => syncBacktestForm();
+    }
+
+    async function loadOverview(){
+      const res = await fetch('/api/strategy-hub/overview');
+      overview = await res.json();
+      setSummaryCards(overview.totals || {});
+      renderStrategyList();
+      renderFocused();
+      if(focusedStrategy) loadStrategySettings(focusedStrategy);
+    }
+
+    async function loadStrategySettings(slug){
+        const fields = document.getElementById('settings-fields');
+        fields.style.display = 'flex';
+        
+        const status = document.getElementById('settings-status');
+        status.textContent = '...';
+        status.style.color = 'var(--muted)';
+
+        try {
+            const res = await fetch(`/api/strategy-hub/settings/${slug}`);
+            const settings = await res.json();
+            
+            document.getElementById('set-tg-morning').checked = (settings.tg_notify_morning !== 'false');
+            document.getElementById('set-tg-open').checked = (settings.tg_notify_market_open !== 'false');
+            document.getElementById('set-tg-entry').checked = (settings.tg_notify_entry !== 'false');
+            document.getElementById('set-tg-exit').checked = (settings.tg_notify_exit !== 'false');
+            document.getElementById('set-tg-gap').checked = (settings.tg_notify_gap !== 'false');
+            
+            status.textContent = 'Settings loaded.';
+            status.style.color = 'var(--accent)';
+        } catch(e) {
+            status.textContent = 'Error loading settings.';
+            status.style.color = 'var(--danger)';
+        }
+    }
+
+    async function saveStrategySettings(){
+        if(!focusedStrategy) return;
+        const status = document.getElementById('settings-status');
+        status.textContent = 'Saving...';
+        status.style.color = 'var(--warn)';
+
+        const payload = {
+            tg_notify_morning: document.getElementById('set-tg-morning').checked,
+            tg_notify_market_open: document.getElementById('set-tg-open').checked,
+            tg_notify_entry: document.getElementById('set-tg-entry').checked,
+            tg_notify_exit: document.getElementById('set-tg-exit').checked,
+            tg_notify_gap: document.getElementById('set-tg-gap').checked
+        };
+
+        try {
+            await fetch(`/api/strategy-hub/settings/${focusedStrategy}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            status.textContent = 'Settings saved ✅';
+            status.style.color = 'var(--accent)';
+        } catch(e) {
+            status.textContent = 'Save failed ❌';
+            status.style.color = 'var(--danger)';
+        }
+    }
+
+    document.querySelectorAll('.st-check').forEach(el => el.onchange = saveStrategySettings);
+
+    let allHistory = [];
+    async function loadHistory(){
+      const res = await fetch('/api/strategy-hub/history?limit=100');
+      allHistory = await res.json();
+      renderHistoryTable();
+    }
+
+    function renderHistoryTable(){
+      const body = document.getElementById('history-body');
+      const searchTerm = document.getElementById('history-search').value.toLowerCase();
+      const pnlFilter = document.getElementById('history-pnl-filter').value;
+
+      let filtered = allHistory.filter(row => {
+        const matchSearch = row.instrument.toLowerCase().includes(searchTerm);
+        const matchPnl = pnlFilter === 'profit' ? row.total_pnl > 0 : true;
+        return matchSearch && matchPnl;
+      });
+
+      body.innerHTML = '';
+      if(!filtered.length){
+        body.innerHTML = '<tr><td colspan="8" class="muted">No matches found.</td></tr>';
+        return;
+      }
+
+      filtered.forEach(row => {
+        const tr = document.createElement('tr');
+        const execDate = row.exec_time ? row.exec_time.split('T')[0] : '—';
+        tr.innerHTML = `
+          <td style="font-size:11px">${execDate}</td>
+          <td style="color:var(--accent); font-weight:600">${row.date || '—'}</td>
+          <td class="muted" style="font-size:11px">${row.strategy_name}</td>
+          <td style="font-weight:600">${row.instrument}</td>
+          <td><span class="chip ${stateClass(row.long_state)}">${row.long_state}</span></td>
+          <td><span class="chip ${stateClass(row.short_state)}">${row.short_state}</span></td>
+          <td><strong class="pnl ${row.total_pnl > 0 ? 'pos' : (row.total_pnl < 0 ? 'neg' : '')}">${formatPnl(row.total_pnl)}</strong></td>
+          <td><button class="btn alt" data-strategy="${row.strategy}" data-id="${row.id}" style="padding:6px 10px; font-size:11px">Replay</button></td>
+        `;
+        body.appendChild(tr);
+      });
+
+      body.querySelectorAll('button[data-id]').forEach(btn => {
+        btn.onclick = async () => {
+          const strategy = btn.dataset.strategy;
+          const id = btn.dataset.id;
+          document.getElementById('bt-strategy').value = strategy;
+          syncBacktestForm();
+          const res = await fetch(`/api/strategy-hub/history-detail?strategy=${encodeURIComponent(strategy)}&id=${encodeURIComponent(id)}`);
+          const data = await res.json();
+          currentSim = data.simulation || data;
+          renderBacktestResult(data);
+          window.scrollTo({ top: 400, behavior: 'smooth' });
+        };
+      });
+    }
+
+    document.getElementById('history-search').oninput = renderHistoryTable;
+    document.getElementById('history-pnl-filter').onchange = renderHistoryTable;
+
+    function renderBacktestResult(data){
+      const summary = document.getElementById('backtest-summary');
+      const eventsBox = document.getElementById('events-box');
+
+      if(data.error) {
+        summary.innerHTML = `<div class="error" style="color:var(--err); padding:20px; text-align:center; border:1px dashed var(--err); border-radius:8px;">${data.error}</div>`;
+        return;
+      }
+
+      const sim = data.simulation || {};
+      const lvl = data.levels || sim.initial_levels || {};
+      const tradeLvl = sim.effective_levels || sim.levels || lvl;
+      const strategy = document.getElementById('bt-strategy').value;
+      const isNG = (strategy === 'natural-gas');
+      const isNifty = (strategy === 'nifty');
+      const dayCount = isNG ? 3 : (isNifty ? 2 : 4);
+      const hLabel = isNG ? 'H3' : 'H4';
+      const lLabel = isNG ? 'L3' : 'L4';
+      const bestHigh = isNG ? lvl.h3 : lvl.h4;
+      const bestLow = isNG ? lvl.l3 : lvl.l4;
+
+      let html = `<div style="display:flex; flex-direction:column; gap:12px;">`;
+      html += `
+        <div style="padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.05)">
+            <div style="font-size:14px; font-weight:600; margin-bottom:4px;">${data.instrument} <span style="font-size:12px; font-weight:400; color:var(--muted)">(${data.trading_symbol || 'N/A'})</span></div>
+            <div style="font-size:12px; color:var(--accent)">Backtest Date: ${data.date}</div>
+        </div>`;
+
+      // 1. Historical Days Table
+      const rawDays = lvl.raw_days || [];
+      html += `
+        <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1); border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:5px;">
+                Historical Data (Previous ${dayCount} Days)
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                <thead>
+                    <tr style="color:var(--muted); border-bottom:1px solid rgba(255,255,255,0.1)">
+                        <th style="padding:6px 4px">Date</th>
+                        <th style="padding:6px 4px">High</th>
+                        <th style="padding:6px 4px">Low</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rawDays.slice(0, dayCount).map(d => `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+                        <td style="padding:6px 4px">${d.date}</td>
+                        <td style="padding:6px 4px; color:var(--ok)">${d.high.toFixed(2)}</td>
+                        <td style="padding:6px 4px; color:var(--err)">${d.low.toFixed(2)}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+      // 2. Calculation Outputs
+      html += `
+        <div style="padding:12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:8px;">
+            <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:5px;">
+                Calculation Outputs
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px;">
+                ${!isNifty ? `
+                <div><span style="color:var(--muted)">Best High (${hLabel}):</span> <strong style="color:var(--ok)">${(bestHigh || 0).toFixed(2)}</strong></div>
+                <div><span style="color:var(--muted)">Best Low (${lLabel}):</span> <strong style="color:var(--err)">${(bestLow || 0).toFixed(2)}</strong></div>
+                ` : ''}
+                <div><span style="color:var(--muted)">2-Day High (H2):</span> ${(lvl.h2 || 0).toFixed(2)}</div>
+                <div><span style="color:var(--muted)">2-Day Low (L2):</span> ${(lvl.l2 || 0).toFixed(2)}</div>
+            </div>
+            
+            <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; border-top:1px dashed rgba(255,255,255,0.1); padding-top:10px;">
+                <div style="background:rgba(0,196,154,0.05); padding:8px; border-radius:4px; border:1px solid rgba(0,196,154,0.1)">
+                    <div style="font-size:10px; color:var(--ok); margin-bottom:2px">LONG ENTRY</div>
+                    <strong>${(lvl.e_l || 0).toFixed(2)}</strong><br>
+                    <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+                        Tgt: ${(lvl.t_l || 0).toFixed(2)}<br>
+                        SL1: ${(lvl.sl1_long?.sl || 0).toFixed(2)}
+                    </div>
+                </div>
+                <div style="background:rgba(255,82,82,0.05); padding:8px; border-radius:4px; border:1px solid rgba(255,82,82,0.1)">
+                    <div style="font-size:10px; color:var(--err); margin-bottom:2px">SHORT ENTRY</div>
+                    <strong>${(lvl.e_s || 0).toFixed(2)}</strong><br>
+                    <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+                        Tgt: ${(lvl.t_s || 0).toFixed(2)}<br>
+                        SL1: ${(lvl.sl1_short?.sl || 0).toFixed(2)}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+      // 3. Trade Summary
+      const renderCard = (type, state, entry, exit, pnl, target, entryDate, exitDate, lot1_pnl) => {
+        if (!state || state === "PENDING" || state === "GAP") return '';
+        const isClosed = state === "CLOSED";
+        const displayPnl = isClosed ? pnl : (lot1_pnl || 0);
+        const pnlLabel = isClosed ? "Total PnL" : "Realized PnL (Lot-1)";
+        const statusColor = type === 'LONG' ? 'var(--ok)' : 'var(--err)';
+        const bgColor = type === 'LONG' ? 'rgba(0,196,154,0.08)' : 'rgba(255,82,82,0.08)';
+
+        return `
+          <div style="padding:12px; background:${bgColor}; border:1px solid ${statusColor}; border-radius:8px; margin-top:10px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px;">
+                  <strong style="color:${statusColor}">${type} TRADE SUMMARY</strong>
+                  <span style="font-size:10px; font-weight:600; color:var(--muted)">${isClosed ? '✅ CLOSED' : '⏳ ACTIVE (Lot-2)'}</span>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px;">
+                  <div>
+                      <span style="color:var(--muted); font-size:11px;">ENTRY</span><br>
+                      <strong>${entry || '-'}</strong><br>
+                      <span style="font-size:11px; color:var(--muted)">${entryDate || ''}</span>
+                  </div>
+                  <div>
+                      <span style="color:var(--muted); font-size:11px;">EXIT</span><br>
+                      <strong>${exit || '-'}</strong><br>
+                      <span style="font-size:11px; color:var(--muted)">${exitDate || ''}</span>
+                  </div>
+                  <div>
+                      <span style="color:var(--muted); font-size:11px;">TARGET</span><br>
+                      <strong>${target || '-'}</strong>
+                  </div>
+                  <div>
+                      <span style="color:var(--muted); font-size:11px;">${pnlLabel}</span><br>
+                      <strong style="color:${displayPnl >= 0 ? 'var(--ok)' : 'var(--err)'}">${formatPnl(displayPnl)}</strong>
+                  </div>
+              </div>
+              ${!isClosed ? `
+                <button onclick="syncToLive('${type}', event)" style="width:100%; margin-top:12px; padding:8px; background:var(--accent); border:none; border-radius:6px; color:#000; font-weight:700; cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; gap:5px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"></path></svg>
+                  SYNC TO LIVE MONITOR
+                </button>
+              ` : ''}
+          </div>`;
+      };
+
+      if (sim.long_state) {
+          html += renderCard('LONG', sim.long_state, sim.long_entry, sim.long_exit, sim.long_pnl, tradeLvl.t_l, sim.long_entry_date, sim.long_exit_date, sim.long_lot1_pnl);
+      }
+      if (sim.short_state) {
+          html += renderCard('SHORT', sim.short_state, sim.short_entry, sim.short_exit, sim.short_pnl, tradeLvl.t_s, sim.short_entry_date, sim.short_exit_date, sim.short_lot1_pnl);
+      }
+      
+      if ((!sim.long_state || sim.long_state === "PENDING" || sim.long_state === "GAP") && 
+          (!sim.short_state || sim.short_state === "PENDING" || sim.short_state === "GAP")) {
+           html += `<div style="padding:15px; color:var(--muted); text-align:center; border:1px dashed rgba(255,255,255,0.1); border-radius:8px;">No trades triggered on this date.</div>`;
+      }
+
+      html += `</div>`;
+      summary.innerHTML = html;
+
+      // Render events
+      const events = sim.events || data.events || [];
+      if(!events.length){
+        eventsBox.innerHTML = `<div style="color:var(--muted); text-align:center; padding:20px;">No events recorded.</div>`;
+        return;
+      }
+      eventsBox.innerHTML = events.map(ev => {
+        if (typeof ev === 'string') return `<div class="event">${ev}</div>`;
+        let dateStr = "";
+        if (ev.date) {
+            const parts = ev.date.split("-");
+            dateStr = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]} ` : `${ev.date} `;
+        }
+        return `<div class="event" style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:13px;">
+            <strong style="color:var(--muted); font-size:11px;">${dateStr}${ev.time || ''}</strong> &nbsp;&nbsp; ${ev.msg || ev.event || ''}
+        </div>`;
+      }).join('');
+    }
+
+    async function syncToLive(type, event) {
+      if(!currentSim) return;
+      const payload = {
+        slug: document.getElementById('bt-strategy').value,
+        instrument: document.getElementById('bt-instrument').value,
+        type: type, // LONG or SHORT
+        sim: currentSim
+      };
+      
+      const btn = event.currentTarget;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'SYNCING...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/strategy-hub/sync-live', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if(result.success) {
+          btn.innerHTML = '✅ SYNCED TO LIVE';
+          btn.style.background = 'var(--ok)';
+          setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.background = 'var(--accent)';
+            btn.disabled = false;
+          }, 3000);
+        } else {
+          alert('Sync failed: ' + (result.error || 'Unknown error'));
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
+      } catch(e) {
+        alert('Network error: ' + e.message);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    async function runBacktest(){
+      const btn = document.getElementById('run-backtest');
+      const summary = document.getElementById('backtest-summary');
+      const eventsBox = document.getElementById('events-box');
+      
+      const originalText = btn.textContent;
+      let timeLeft = 20;
+      
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      btn.textContent = `Loading... (${timeLeft}s)`;
+      
+      summary.innerHTML = '<div style="color:var(--muted)">Fetching intraday data from Angel One. This may take 10-20 seconds...</div>';
+      eventsBox.innerHTML = '<div class="muted">Waiting for backtest to complete...</div>';
+
+      const timer = setInterval(() => {
+          timeLeft--;
+          if(timeLeft >= 0) {
+              btn.textContent = `Loading... (${timeLeft}s)`;
+          } else {
+              btn.textContent = `Processing...`;
+          }
+      }, 1000);
+
+      try {
+          const payload = {
+            strategy: document.getElementById('bt-strategy').value,
+            instrument: document.getElementById('bt-instrument').value,
+            date: document.getElementById('bt-date').value,
+          };
+          const res = await fetch('/api/strategy-hub/backtest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          currentSim = data.simulation || data;
+          renderBacktestResult(data);
+      } catch(e) {
+          summary.innerHTML = `<div class="error">Network error: ${e.message}</div>`;
+          eventsBox.innerHTML = '';
+      } finally {
+          clearInterval(timer);
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.textContent = originalText;
+      }
+    }
+
+    async function runFetchNow(){
+      const slug = document.getElementById('bt-strategy').value;
+      await fetch(`/api/strategy-hub/fetch/${encodeURIComponent(slug)}`, { method: 'POST' });
+      await loadOverview();
+      await loadHistory();
+    }
+
+    async function checkStatus(){
+      try{
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const badge = document.getElementById('api-status');
+        const isOk = data.angel_one?.connected;
+        badge.className = 'status-badge ' + (isOk ? 'ok' : 'err');
+        badge.querySelector('span').textContent = isOk ? 'Angel One Connected' : 'Angel One Disconnected';
+      }catch(e){
+        const badge = document.getElementById('api-status');
+        badge.className = 'status-badge err';
+        badge.querySelector('span').textContent = 'Server Offline';
+      }
+    }
+
+    async function boot(){
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      document.getElementById('bt-date').value = `${now.getFullYear()}-${month}-${day}`;
+      
+      checkStatus();
+      setInterval(checkStatus, 10000);
+
+      await loadStrategies();
+      await loadOverview();
+      await loadHistory();
+      document.getElementById('run-backtest').onclick = runBacktest;
+      document.getElementById('run-fetch').onclick = runFetchNow;
+      document.getElementById('view-workflow').onclick = () => {
+        document.getElementById('workflow-modal').style.display = 'block';
+      };
+
+      document.getElementById('refresh-all').onclick = async () => {
+        await loadOverview();
+        await loadHistory();
+      };
+    }
+
+    boot();
+  </script>
+</body>
+</html>

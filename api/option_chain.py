@@ -234,7 +234,9 @@ async def get_option_chain(symbol: str, expiry: str = None):
 
     chain, atm = build_chain(instruments, ltp_map, spot)
     # Use actual lot size from instrument master (most accurate)
-    lot_size = int(instruments[0].get("lotsize", LOT_SIZES.get(symbol, 1))) if instruments else LOT_SIZES.get(symbol, 1)
+    lot_size = LOT_SIZES.get(symbol, 1)
+    if instruments:
+        lot_size = int(instruments[0].get("lotsize", lot_size))
 
     logger.info(f"Option chain {symbol} {selected_expiry}: {len(chain)} strikes, spot={spot}")
     return {
@@ -262,6 +264,79 @@ async def refresh_master():
     loop = asyncio.get_running_loop()
     master = await loop.run_in_executor(None, load_master, True)
     return {"status": "ok", "instruments": len(master)}
+
+
+def get_fut_expiries(master: list, symbol: str) -> list[str]:
+    """Get all available expiry dates for a future symbol"""
+    sym = symbol.upper()
+    expiries = set()
+    for inst in master:
+        if (inst.get("name", "").upper() == sym and
+                inst.get("instrumenttype", "") in ("FUTIDX", "FUTSTK", "FUTCOM", "FUTCUR")):
+            exp = inst.get("expiry", "")
+            if exp:
+                expiries.add(exp)
+    return sorted(expiries, key=_parse_expiry_date)
+
+
+@router.get("/futures/{symbol}/expiries")
+async def get_future_expiry_list(symbol: str):
+    """Get available expiry dates for a future symbol"""
+    loop = asyncio.get_running_loop()
+    master = await loop.run_in_executor(None, load_master)
+    if not master:
+        raise HTTPException(status_code=503, detail="Master not loaded")
+    return get_fut_expiries(master, symbol.upper())
+
+
+@router.get("/futures/{symbol}/details")
+async def get_future_details(symbol: str, expiry: str):
+    """Get the specific instrument details for a future symbol + expiry"""
+    loop = asyncio.get_running_loop()
+    master = await loop.run_in_executor(None, load_master)
+    sym = symbol.upper()
+    for inst in master:
+        if (inst.get("name", "").upper() == sym and
+                inst.get("expiry", "") == expiry and
+                inst.get("instrumenttype", "") in ("FUTIDX", "FUTSTK", "FUTCOM", "FUTCUR")):
+            return {
+                "token": str(inst.get("token")),
+                "symbol": inst.get("symbol"),
+                "name": inst.get("name"),
+                "exchange": inst.get("exch_seg"),
+                "expiry": inst.get("expiry"),
+                "lot_size": int(inst.get("lotsize", 1))
+            }
+    raise HTTPException(status_code=404, detail="Instrument not found")
+
+from pydantic import BaseModel
+class WatchlistPayload(BaseModel):
+    items: list[dict]  # [{"token": "123", "exchange": "NFO"}, ...]
+
+@router.post("/futures/quotes")
+async def get_futures_quotes(payload: WatchlistPayload):
+    """Fetch LTP for a custom list of future tokens"""
+    from data.angel_api import angel_api
+    if not angel_api.is_connected():
+        return {}
+
+    nfo_tokens = [item["token"] for item in payload.items if item.get("exchange") == "NFO"]
+    mcx_tokens = [item["token"] for item in payload.items if item.get("exchange") == "MCX"]
+    nse_tokens = [item["token"] for item in payload.items if item.get("exchange") == "NSE"]
+
+    loop = asyncio.get_running_loop()
+    ltp_map: dict[str, float] = {}
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        tasks = []
+        if nfo_tokens: tasks.append(loop.run_in_executor(ex, fetch_ltps_batch, nfo_tokens, "NFO"))
+        if mcx_tokens: tasks.append(loop.run_in_executor(ex, fetch_ltps_batch, mcx_tokens, "MCX"))
+        if nse_tokens: tasks.append(loop.run_in_executor(ex, fetch_ltps_batch, nse_tokens, "NSE"))
+        
+        if tasks:
+            for r in await asyncio.gather(*tasks):
+                ltp_map.update(r)
+
+    return ltp_map
 
 
 FUTURES_CONFIG = [
@@ -369,15 +444,44 @@ async def get_futures():
 
 @router.get("/instruments/search")
 async def search_instruments(q: str = ""):
-    """Quick instrument search for option chain selector"""
-    indices = [
-        {"symbol": "NIFTY",       "name": "Nifty 50",     "lot": LOT_SIZES["NIFTY"]},
-        {"symbol": "BANKNIFTY",   "name": "Bank Nifty",   "lot": LOT_SIZES["BANKNIFTY"]},
-        {"symbol": "FINNIFTY",    "name": "Fin Nifty",    "lot": LOT_SIZES["FINNIFTY"]},
-        {"symbol": "MIDCPNIFTY",  "name": "Midcap Nifty", "lot": LOT_SIZES["MIDCPNIFTY"]},
-        {"symbol": "SENSEX",      "name": "Sensex",       "lot": LOT_SIZES["SENSEX"]},
-    ]
-    if not q:
-        return indices
-    q = q.upper()
-    return [i for i in indices if q in i["symbol"] or q in i["name"].upper()]
+    """Returns a list of unique symbols for search dropdown."""
+    try:
+        loop = asyncio.get_running_loop()
+        master = await loop.run_in_executor(None, load_master)
+        if not master:
+            return []
+            
+        # We use a set to get unique underlying symbols (name field in NFO)
+        symbols_map = {}
+        
+        # Add common indices first
+        indices = [
+            {"symbol": "NIFTY", "name": "Nifty 50"},
+            {"symbol": "BANKNIFTY", "name": "Bank Nifty"},
+            {"symbol": "FINNIFTY", "name": "Fin Nifty"},
+            {"symbol": "MIDCPNIFTY", "name": "Midcap Nifty"},
+            {"symbol": "SENSEX", "name": "Sensex"},
+        ]
+        for idx in indices:
+            symbols_map[idx["symbol"]] = idx["name"]
+
+        for i in master:
+            if i.get("exch_seg") == "NFO":
+                sym = i.get("name", "")
+                if sym and sym not in symbols_map:
+                    # 'symbol' field usually has more info like 'RELIANCE28MAY26FUT'
+                    # but 'name' is the underlying 'RELIANCE'
+                    symbols_map[sym] = sym
+        
+        results = [{"symbol": k, "name": v} for k, v in symbols_map.items()]
+        results.sort(key=lambda x: x["symbol"])
+        
+        if q:
+            q = q.upper()
+            return [i for i in results if q in i["symbol"] or q in i["name"].upper()]
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error in search_instruments: {e}")
+        return []
+

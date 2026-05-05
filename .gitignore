@@ -1,52 +1,33 @@
+# ZenithTrade Algo - Git Ignore File
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
 venv/
-.venv/
-ENV/
-
-# Sensitive Information
+venv_trading/
 .env
-.env.*
-! .env.example
 
-# Database
+# Databases
 *.db
 *.sqlite3
 
 # Logs
-logs/
 *.log
+logs/
+lock_log.txt
 
-# App Specific
-data_cache/
-uploads/
-.claude/
+# Temp/Cache
+.tempmediaStorage/
+brain/
+scratch/
 .gemini/
-.idea/
-.vscode/
 
-# OS specific
-.DS_Store
-Thumbs.db
+# Trading Data (to keep local)
+data/mcx_ohlc/
+mcx_bhavcopy/
+temp_lots.txt
+
+# IDE
+.vscode/
+.idea/

@@ -43,7 +43,7 @@ def is_market_open(exchange: str = "NSE", symbol: str = "") -> bool:
     if exchange == "MCX":
         open_time = "09:00"
         symbol_upper = symbol.upper()
-        if any(s in symbol_upper for s in settings.MCX_NON_AGRI_SYMBOLS):
+        if not symbol or any(s in symbol_upper for s in settings.MCX_NON_AGRI_SYMBOLS):
             close_time = "23:30"
         else:
             close_time = "17:00"
@@ -90,6 +90,24 @@ class MarketScheduler:
             day_of_week="mon-fri", hour=9, minute=0,
             id="morning_connect"
         )
+        # Daily MCX Bhavcopy Fetch (7:00 AM)
+        self.scheduler.add_job(
+            self._run_mcx_fetcher, "cron",
+            day_of_week="mon-fri", hour=7, minute=0,
+            id="mcx_fetcher"
+        )
+
+    def _run_mcx_fetcher(self):
+        import subprocess
+        logger.info("Running daily MCX Bhavcopy fetcher...")
+        try:
+            # Path relative to Papertrading root
+            python_exe = r"venv\Scripts\python.exe"
+            fetcher_script = r"mcx_bhavcopy\mcx_bhavcopy_fetcher_production.py"
+            subprocess.run([python_exe, fetcher_script], check=True)
+            logger.info("Daily MCX fetcher completed successfully")
+        except Exception as e:
+            logger.error(f"Daily MCX fetcher failed: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api

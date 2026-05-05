@@ -3,6 +3,7 @@ Paper Trading System - Entry Point
 Run: uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
+# Dashboard Main Entry Point
 import os
 import sys
 import uvicorn
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     from data.angel_api import angel_api
     from data.market_feed import market_feed
     from scheduler.market_sessions import market_scheduler
+    from core.strategy_registry import strategy_registry
     from config.settings import settings
     from loguru import logger
 
@@ -56,35 +58,56 @@ async def lifespan(app: FastAPI):
     # Check EasyOCR availability
     try:
         from parsers.signal_parser import _get_reader
-
         logger.info("Checking EasyOCR availability...")
-        reader = _get_reader()
+        _get_reader()
         logger.info("EasyOCR ready")
     except Exception as e:
-        logger.warning(f"EasyOCR not available: {e}. Image parsing will use text only.")
+        logger.warning(f"EasyOCR not available: {e}")
 
-    # Load engine active trades after connection
+    # Load engine active trades
     from core.engine import engine
     engine._load_active_trades()
 
-    # Feed starts lazily on first trade subscription
-    # Start LTP poller (REST fallback for PENDING/OPEN trades)
+    # Start LTP poller
     from core.ltp_poller import ltp_poller
-
     ltp_poller.start()
 
-    market_scheduler.start()
-    logger.info("Paper Trading System READY")
+    # START STRATEGIES IN BACKGROUND
+    import threading
+    import time
+    def _bg_start():
+        try:
+            logger.info("Starting strategies in background with 5s delay...")
+            # We delay the very first start to ensure the app is fully ready
+            time.sleep(5)
+            for slug, strategy in strategy_registry._strategies.items():
+                logger.info(f"Starting {slug}...")
+                strategy.start()
+                time.sleep(5) # Generous breath for API rate limits
+            
+            market_scheduler.start()
+            logger.info("Paper Trading System READY (Background tasks completed)")
+        except Exception as e:
+            logger.error(f"Background startup failed: {e}")
 
+    threading.Thread(target=_bg_start, daemon=True).start()
+
+    logger.info("FastAPI Server READY - Dashboard available at http://localhost:8000")
     yield  # ── App running ──────────────────────────────────────
 
     # ── Shutdown ───────────────────────────────────────────────
     from core.ltp_poller import ltp_poller
+    from core.strategy_registry import strategy_registry
 
     ltp_poller.stop()
+    strategy_registry.shutdown_all()
     market_feed.stop()
     angel_api.disconnect()
-    market_scheduler.stop()
+    
+    # Only stop if it was started
+    if market_scheduler.scheduler and market_scheduler.scheduler.running:
+        market_scheduler.stop()
+    
     logger.info("Paper Trading System stopped")
 
 
@@ -101,5 +124,6 @@ if __name__ == "__main__":
         "main:app",
         host=settings.APP_HOST,
         port=settings.APP_PORT,
-        reload=False,
+        reload=settings.DEBUG,
     )
+

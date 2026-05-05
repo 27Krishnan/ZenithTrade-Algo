@@ -23,8 +23,10 @@ from loguru import logger
 app = FastAPI(title="Paper Trading System", version="1.0.0")
 
 from api.option_chain import router as oc_router
+from api.strategy_hub import router as strategy_hub_router
 
 app.include_router(oc_router)
+app.include_router(strategy_hub_router)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -46,7 +48,7 @@ class TradeSignalText(BaseModel):
 class ManualTrade(BaseModel):
     symbol: str
     exchange: str
-    instrument_type: str
+    instrument_type: str = "EQ"
     action: str
     entry_price: float
     stop_loss: float = 0.0
@@ -54,6 +56,7 @@ class ManualTrade(BaseModel):
     quantity: int
     lot_size: int = 1
     trade_type: str = "INTRADAY"
+    entry_type: str = "LIMIT"
     trailing_sl_points: float | None = None
     owner_id: int | None = None
     strategy: str | None = None
@@ -115,6 +118,29 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     owners = db.query(Owner).order_by(Owner.name).all()
     strategies = db.query(Strategy).order_by(Strategy.name).all()
     
+    # Inject MathZing strategies into the list for the dropdown
+    maffin_strats = [
+        {"name": "GOLD • MathZing"},
+        {"name": "SILVER • MathZing"},
+        {"name": "NATURALGAS • MathZing"},
+        {"name": "NIFTY • MathZing"}
+    ]
+    all_strategies = list(strategies)
+    for ms in maffin_strats:
+        # Check if the strategy already exists in a case-insensitive and separator-agnostic way
+        exists = False
+        ms_base = ms["name"].split(" • ")[0].strip().upper()
+        for s in all_strategies:
+            s_name = (getattr(s, 'name', None) or (s.get('name') if isinstance(s, dict) else None))
+            if s_name:
+                # Normalize existing name to check base (e.g., "GOLD - MathZing" -> "GOLD")
+                s_base = s_name.replace(" - MathZing", "").replace(" • MathZing", "").strip().upper()
+                if s_base == ms_base:
+                    exists = True
+                    break
+        if not exists:
+            all_strategies.append(ms)
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -125,7 +151,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "total_trades": len(today_closed),
             "winning_trades": sum(1 for t in today_closed if (t.gross_pnl or 0) > 0),
             "owners": owners,
-            "strategies": strategies,
+            "strategies": all_strategies,
         }
     )
 
@@ -209,7 +235,7 @@ async def create_manual_trade(payload: ManualTrade, db: Session = Depends(get_db
         "exchange": payload.exchange,
         "instrument_type": payload.instrument_type,
         "entry_price": payload.entry_price,
-        "entry_type": "LIMIT",
+        "entry_type": payload.entry_type,
         "stop_loss": payload.stop_loss,
         "targets": payload.targets,
         "quantity": payload.quantity,
@@ -242,7 +268,7 @@ async def execute_basket(payload: BasketPayload, db: Session = Depends(get_db)):
             "exchange": leg.exchange,
             "instrument_type": leg.instrument_type,
             "entry_price": leg.entry_price,
-            "entry_type": "LIMIT",
+            "entry_type": leg.entry_type,
             "stop_loss": leg.stop_loss,
             "targets": leg.targets,
             "quantity": leg.quantity,
@@ -522,6 +548,19 @@ async def delete_strategy(strategy_id: int, db: Session = Depends(get_db)):
 
 
 # ─── P&L Breakdown ───────────────────────────────────────────────────────────
+
+
+@app.get("/api/pnl/strategies")
+async def pnl_strategy_list(db: Session = Depends(get_db)):
+    """Returns distinct strategy names from closed trades for dropdown."""
+    rows = (
+        db.query(Trade.strategy)
+        .filter(Trade.status == TradeStatus.CLOSED, Trade.strategy.isnot(None))
+        .distinct()
+        .all()
+    )
+    names = sorted([r[0] for r in rows if r[0]])
+    return {"strategies": names}
 
 
 @app.get("/api/pnl/breakdown")
