@@ -469,7 +469,7 @@
             <td class="ltp-cell ltp-neu" id="ltp-{{ t.id }}">—</td>
             <td class="ltp-cell" id="pnl-{{ t.id }}" data-entry="{{ t.entry_price }}" data-qty="{{ t.quantity }}" data-action="{{ t.action }}">—</td>
             <td>{{ t.entry_price }}</td>
-            <td style="font-size:10px;color:#6c9eff">{{ t.entry_triggered_at.strftime('%d %b %H:%M') if t.entry_triggered_at else '—' }}</td>
+            <td style="font-size:10px;color:#6c9eff">{{ t.entry_triggered_at_fmt if t.entry_triggered_at else '—' }}</td>
             <td>{{ t.stop_loss }}</td>
             <td class="tsl" id="tsl-{{ t.id }}">{{ "%.2f"|format(t.trailing_sl) if t.trailing_sl else "—" }}</td>
             <td class="tsl">{{ t.trailing_sl_points or "—" }}</td>
@@ -524,9 +524,9 @@
             <td><span class="sbadge s-{{ t.exit_reason or t.status }}">{{ t.exit_reason or t.status }}</span></td>
             <td>{% if t.owner %}<span style="background:{{ t.owner.color }}22;color:{{ t.owner.color }};padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">{{ t.owner.name }}</span>{% else %}<span style="color:#333">—</span>{% endif %}</td>
             <td style="font-size:11px;color:#888">{{ t.strategy or "—" }}</td>
-            <td style="color:#6c9eff;font-size:11px;">{{ t.entry_triggered_at.strftime('%d %b %H:%M') if t.entry_triggered_at else "—" }}</td>
+            <td style="color:#6c9eff;font-size:11px;">{{ t.entry_triggered_at_fmt if t.entry_triggered_at else "—" }}</td>
             <td style="color:#ff4d6d;font-size:11px;">
-              {{ t.closed_at.strftime('%d %b %H:%M') if t.closed_at else "—" }}
+              {{ t.closed_at_fmt if t.closed_at else "—" }}
               <button class="act-btn del" style="margin-left:8px;padding:1px 6px" onclick="deleteTrade({{ t.id }})">✕</button>
             </td>
           </tr>

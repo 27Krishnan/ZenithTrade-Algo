@@ -993,6 +993,10 @@ def _trade_dict(t: Trade) -> dict:
         "entry_triggered_at": t.entry_triggered_at.isoformat()
         if t.entry_triggered_at
         else None,
+        "entry_triggered_at_fmt": t.entry_triggered_at.strftime('%d %b %H:%M')
+        if t.entry_triggered_at
+        else None,
         "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+        "closed_at_fmt": t.closed_at.strftime('%d %b %H:%M') if t.closed_at else None,
         "audit_log": t.audit_log,
     }
