@@ -28,7 +28,11 @@ class SyncLivePayload(BaseModel):
 
 @router.get("/strategy-center", response_class=HTMLResponse)
 async def strategy_center(request: Request):
-    return templates.TemplateResponse("strategy_center.html", {"request": request})
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader("dashboard/templates"))
+    template = env.get_template("strategy_center.html")
+    html = template.render(request=request)
+    return HTMLResponse(content=html)
 
 
 @router.get("/api/strategy-hub/overview")
