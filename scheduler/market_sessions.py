@@ -98,17 +98,14 @@ class MarketScheduler:
         )
 
     def _run_mcx_fetcher(self):
-        """Fetch previous day's MCX OHLC data using Angel One API (cloud-compatible)."""
-        logger.info("Running daily MCX OHLC update via Angel One API...")
+        """Fetch previous day's MCX OHLC from MCX WEBSITE via Playwright (cloud-compatible)."""
+        logger.info("Running daily MCX OHLC fetch from MCX website (Playwright)...")
         try:
-            from mcx_bhavcopy.angel_ohlc_updater import run_update
-            result = run_update(n_days=30)
-            if result.get("success"):
-                logger.info(f"MCX OHLC update complete: {result.get('summary', {})}")
-            else:
-                logger.error(f"MCX OHLC update failed: {result.get('reason')}")
+            from mcx_bhavcopy.mcx_playwright_fetcher import run_fetch
+            summary = run_fetch(force_days=0)  # smart incremental fetch
+            logger.info(f"MCX fetch complete: {summary}")
         except Exception as e:
-            logger.error(f"MCX OHLC updater error: {e}")
+            logger.error(f"MCX Playwright fetcher error: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api
