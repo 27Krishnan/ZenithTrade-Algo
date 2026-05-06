@@ -1,6 +1,12 @@
 name: Daily MCX OHLC Data Fetch
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/mcx_daily_fetch.yml'
+      - 'mcx_bhavcopy/mcx_actions_fetcher.py'
   schedule:
     # 1:00 AM UTC = 6:30 AM IST (before cloud 7 AM fetch job)
     - cron: '0 1 * * 1-5'  # Mon-Fri only
@@ -35,9 +41,9 @@ jobs:
 
       - name: Fetch MCX OHLC data
         run: |
-          python mcx_bhavcopy/mcx_actions_fetcher.py 5
+          python mcx_bhavcopy/mcx_actions_fetcher.py 0
         env:
-          MCX_FETCH_DAYS: '5'
+          MCX_FETCH_DAYS: '0'
 
       - name: Check if data was updated
         id: check_changes

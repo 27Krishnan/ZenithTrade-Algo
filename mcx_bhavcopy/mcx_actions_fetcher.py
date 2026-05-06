@@ -1,46 +1,100 @@
 """
-MCX Actions Fetcher — Runs inside GitHub Actions (Ubuntu runner)
-=================================================================
-Uses Selenium + Chrome (available on GitHub Actions runners).
-Fetches OHLC data from MCX website and saves to data/mcx_ohlc/*.csv
+MCX Actions Fetcher
+===================
+Stable Selenium fetcher for MCX bhavcopy that works both locally and in
+GitHub Actions headless Chrome.
 
-This script is called ONLY by the GitHub Actions workflow.
-It runs on GitHub's servers — not on GCP — so MCX doesn't block it.
+Supported commodities:
+    GOLD, GOLDM, SILVER, SILVERM, SILVERMIC, NATURALGAS, NATGASMINI
+
+Key behavior:
+    - Uses only the visible MCX UI flow
+    - Waits for every element explicitly
+    - Selects nearest valid expiry
+    - Rolls over to next expiry when current expiry is within 10 trading days
+    - Fetches from previous saved date + 1 through yesterday
+    - Falls back to first day of previous month if no CSV exists
+    - Extracts page 1 + page 2 and merges to CSV
+    - Saves screenshots + HTML for every major step and on exceptions
 """
 
-import os
-import re
-import sys
-import csv
-import time
-from datetime import datetime, date, timedelta
-from loguru import logger
+from __future__ import annotations
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(PROJECT_ROOT, "data", "mcx_ohlc")
+import csv
+import json
+import os
+import sys
+import time
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from loguru import logger
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data" / "mcx_ohlc"
+DEBUG_ROOT = PROJECT_ROOT / "mcx_bhavcopy" / "data" / "actions_debug"
+MCX_URL = "https://www.mcxindia.com/market-data/bhavcopy"
 
 COMMODITIES = [
-    ("GOLD",       "gold"),
-    ("GOLDM",      "goldm"),
-    ("SILVER",     "silver"),
-    ("SILVERM",    "silverm"),
-    ("SILVERMIC",  "silvermic"),
+    ("GOLD", "gold"),
+    ("GOLDM", "goldm"),
+    ("SILVER", "silver"),
+    ("SILVERM", "silverm"),
+    ("SILVERMIC", "silvermic"),
     ("NATURALGAS", "naturalgas"),
     ("NATGASMINI", "naturalgasm"),
 ]
 
-MCX_URL = "https://www.mcxindia.com/market-data/bhavcopy"
+TRADING_DAY_ROLLOVER_THRESHOLD = 10
 
 
-# ─── CSV helpers ──────────────────────────────────────────────────────────────
+@dataclass
+class CommodityRun:
+    commodity: str
+    csv_key: str
+    from_date: str
+    to_date: str
+    expiry: str
+    total_rows: int
+    added_rows: int
+    csv_path: str
+    debug_dir: str
+
+
+def business_days_until(start_day: date, end_day: date) -> int:
+    if end_day <= start_day:
+        return 0
+    current = start_day
+    count = 0
+    while current < end_day:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            count += 1
+    return count
+
+
+def previous_month_start(reference_day: date) -> date:
+    first_of_month = reference_day.replace(day=1)
+    previous_month_last = first_of_month - timedelta(days=1)
+    return previous_month_last.replace(day=1)
+
 
 def _get_last_date(csv_key: str) -> date | None:
-    file_path = os.path.join(DATA_DIR, f"{csv_key}_ohlc.csv")
-    if not os.path.exists(file_path):
+    file_path = DATA_DIR / f"{csv_key}_ohlc.csv"
+    if not file_path.exists():
         return None
     try:
         dates = []
-        with open(file_path, "r") as f:
+        with file_path.open("r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
@@ -55,42 +109,42 @@ def _get_last_date(csv_key: str) -> date | None:
 def _merge_and_save(csv_key: str, new_rows: list[dict]) -> int:
     if not new_rows:
         return 0
-    os.makedirs(DATA_DIR, exist_ok=True)
-    file_path = os.path.join(DATA_DIR, f"{csv_key}_ohlc.csv")
-    existing = {}
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    file_path = DATA_DIR / f"{csv_key}_ohlc.csv"
+    existing: dict[str, dict] = {}
+    if file_path.exists():
+        with file_path.open("r", newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 existing[row["Date"]] = row
+
     added = 0
     for row in new_rows:
         if row["Date"] not in existing:
             added += 1
         existing[row["Date"]] = row
+
     sorted_rows = sorted(
         existing.values(),
         key=lambda x: datetime.strptime(x["Date"], "%d %b %Y"),
         reverse=True,
     )
-    with open(file_path, "w", newline="") as f:
+
+    with file_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["Date", "Open", "High", "Low", "Close", "Volume", "OI"]
+            f,
+            fieldnames=["Date", "Open", "High", "Low", "Close", "Volume", "OI"],
         )
         writer.writeheader()
         writer.writerows(sorted_rows)
-    logger.info(f"✅ {csv_key}_ohlc.csv — {len(new_rows)} rows ({added} new, {len(sorted_rows)} total)")
+    logger.info(
+        f"{csv_key}_ohlc.csv saved - {len(new_rows)} rows "
+        f"({added} new, {len(sorted_rows)} total)"
+    )
     return added
 
 
-# ─── Selenium driver ──────────────────────────────────────────────────────────
-
-def _setup_driver():
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
-
+def _build_driver() -> webdriver.Chrome:
     opts = Options()
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
@@ -101,13 +155,16 @@ def _setup_driver():
         "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
-    # Use system Chrome if available (GitHub Actions has google-chrome-stable)
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+
     chrome_path = "/usr/bin/google-chrome-stable"
     if os.path.exists(chrome_path):
         opts.binary_location = chrome_path
 
     driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()), options=opts
+        service=Service(ChromeDriverManager().install()),
+        options=opts,
     )
     driver.execute_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
@@ -115,200 +172,358 @@ def _setup_driver():
     return driver
 
 
-# ─── Fetch logic ──────────────────────────────────────────────────────────────
+def _save_debug(driver: webdriver.Chrome, debug_dir: Path, stem: str) -> None:
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    driver.save_screenshot(str(debug_dir / f"{stem}.png"))
+    (debug_dir / f"{stem}.html").write_text(driver.page_source, encoding="utf-8")
 
-def _extract_table(driver) -> list[dict]:
-    from selenium.webdriver.common.by import By
-    rows = []
+
+def _click_when_ready(driver: webdriver.Chrome, wait: WebDriverWait, locator):
+    elem = wait.until(EC.visibility_of_element_located(locator))
+    wait.until(EC.element_to_be_clickable(locator))
     try:
-        table = driver.find_element(By.ID, "tblBhavCopy")
-        trs = table.find_elements(By.TAG_NAME, "tr")
-        for tr in trs[1:]:
-            tds = tr.find_elements(By.TAG_NAME, "td")
-            if len(tds) >= 13:
-                def t(i): return tds[i].text.strip()
-                rows.append({
-                    "Date":   t(0),
-                    "Open":   t(5),
-                    "High":   t(6),
-                    "Low":    t(7),
-                    "Close":  t(8),
-                    "Volume": t(10),
-                    "OI":     t(12),
-                })
-    except Exception as e:
-        logger.warning(f"Table extract warning: {e}")
-    return rows
-
-
-def _dismiss_popups(driver):
-    """Dismiss any cookie consent or overlay popups."""
-    from selenium.webdriver.common.by import By
-    popup_selectors = [
-        "button#onetrust-accept-btn-handler",
-        "button.accept-cookies",
-        "button[aria-label*='Accept']",
-        ".cookie-accept",
-        "#cookie-accept",
-        "button[class*='accept']",
-        "button[class*='cookie']",
-    ]
-    for sel in popup_selectors:
-        try:
-            btn = driver.find_element(By.CSS_SELECTOR, sel)
-            driver.execute_script("arguments[0].click();", btn)
-            time.sleep(1)
-        except Exception:
-            pass
-
-
-def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: str) -> list[dict]:
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait, Select
-    from selenium.webdriver.support import expected_conditions as EC
-
-    today = date.today()
-
-    logger.info(f"{commodity}: Opening MCX bhavcopy page...")
-    driver.get(MCX_URL)
-    time.sleep(6)
-
-    # Dismiss any popups first
-    _dismiss_popups(driver)
-    time.sleep(1)
-
-    # Switch to Commodity Wise — use JS click to bypass overlay issues
-    try:
-        toggle = WebDriverWait(driver, 12).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//label[contains(text(), 'Commodity Wise')]")
-            )
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", toggle)
-        time.sleep(1)
-        driver.execute_script("arguments[0].click();", toggle)
-        time.sleep(3)
-        logger.info(f"{commodity}: Switched to Commodity Wise mode")
-    except Exception as e:
-        logger.warning(f"{commodity}: Commodity Wise toggle issue: {e}")
-
-    # Select Instrument = FUTCOM
-    try:
-        Select(driver.find_element(By.ID, "ddlInstrument")).select_by_value("FUTCOM")
-        time.sleep(2)
-    except Exception as e:
-        logger.error(f"{commodity}: Instrument select failed: {e}")
-        return []
-
-    # Select Commodity via JS (Telerik RadComboBox)
-    driver.execute_script(f"""
-        var combo = $find("ddlSymbols");
-        if (combo) {{
-            var item = combo.findItemByText("{commodity}");
-            if (item) {{ item.select(); }}
-            else {{ combo.set_text("{commodity}"); }}
-        }}
-    """)
-    time.sleep(3)
-
-    # Auto-select near-month expiry
-    expiry_selected = False
-    for attempt in range(5):
-        try:
-            sel = Select(driver.find_element(By.ID, "ddlExpiry"))
-            for opt in sel.options:
-                txt = opt.text.strip()
-                val = opt.get_attribute("value")
-                if not txt or txt.lower() in ("select", ""):
-                    continue
-                try:
-                    exp_dt = datetime.strptime(txt, "%d%b%Y").date()
-                    if exp_dt >= today:
-                        sel.select_by_value(val)
-                        logger.info(f"{commodity}: Selected expiry {txt}")
-                        expiry_selected = True
-                        break
-                except Exception:
-                    continue
-            if expiry_selected:
-                break
-        except Exception:
-            time.sleep(2)
-
-    if not expiry_selected:
-        logger.error(f"{commodity}: No valid expiry found")
-        return []
-
-    # Set date range via JS
-    driver.execute_script(f"document.getElementById('txtFromDate').value = '{from_date_str}';")
-    driver.execute_script(f"document.getElementById('txtToDate').value = '{to_date_str}';")
-
-    # Click Show via JS
-    driver.execute_script("document.getElementById('btnShowCommoditywise').click();")
-    time.sleep(6)
-
-    rows = _extract_table(driver)
-    logger.info(f"{commodity}: Page 1 → {len(rows)} rows")
-
-    # Page 2
-    try:
-        p2 = driver.find_element(By.LINK_TEXT, "2")
-        driver.execute_script("arguments[0].click();", p2)
-        time.sleep(3)
-        extra = _extract_table(driver)
-        logger.info(f"{commodity}: Page 2 → {len(extra)} rows")
-        rows.extend(extra)
+        elem.click()
     except Exception:
-        pass
+        driver.execute_script("arguments[0].click();", elem)
+    return elem
 
+
+def _open_page(driver: webdriver.Chrome, wait: WebDriverWait, debug_dir: Path) -> None:
+    last_exc = None
+    for attempt in range(1, 3):
+        try:
+            logger.info(f"Opening MCX page (attempt {attempt})")
+            driver.get(MCX_URL)
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".maToggle.trade1.bhavcopytopsec")))
+            wait.until(EC.visibility_of_element_located((By.ID, "ddlInstrumentName")))
+            _save_debug(driver, debug_dir, "loaded")
+            return
+        except Exception as exc:
+            last_exc = exc
+            _save_debug(driver, debug_dir, f"loaded_error_attempt_{attempt}")
+            if attempt == 2:
+                raise
+    raise last_exc
+
+
+def _switch_to_commodity_wise(driver: webdriver.Chrome, wait: WebDriverWait, debug_dir: Path) -> None:
+    logger.info("Switching to Commodity Wise")
+    toggle = _click_when_ready(driver, wait, (By.CSS_SELECTOR, ".maToggle.trade1.bhavcopytopsec"))
+    time.sleep(1)
+    commodity_display = driver.execute_script(
+        "return getComputedStyle(document.getElementById('commoditywise')).display;"
+    )
+    if commodity_display != "block":
+        driver.execute_script("arguments[0].click();", toggle)
+        time.sleep(1)
+        commodity_display = driver.execute_script(
+            "return getComputedStyle(document.getElementById('commoditywise')).display;"
+        )
+    if commodity_display != "block":
+        raise RuntimeError("Failed to switch to Commodity Wise mode")
+    _save_debug(driver, debug_dir, "commodity_mode")
+
+
+def _select_instrument(driver: webdriver.Chrome, wait: WebDriverWait, debug_dir: Path) -> None:
+    logger.info("Selecting Instrument = FUTCOM")
+    dropdown = wait.until(EC.element_to_be_clickable((By.ID, "ddlInstrument")))
+    Select(dropdown).select_by_value("FUTCOM")
+    wait.until(lambda d: d.find_element(By.ID, "ddlInstrument").get_attribute("value") == "FUTCOM")
+    _save_debug(driver, debug_dir, "instrument_selected")
+
+
+def _select_commodity(
+    driver: webdriver.Chrome,
+    wait: WebDriverWait,
+    debug_dir: Path,
+    commodity: str,
+) -> None:
+    logger.info(f"Selecting commodity = {commodity}")
+    _click_when_ready(driver, wait, (By.ID, "ddlSymbols_Arrow"))
+    item = wait.until(
+        EC.visibility_of_element_located(
+            (By.XPATH, f"//div[@id='ddlSymbols_DropDown']//li[normalize-space()='{commodity}']")
+        )
+    )
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", item)
+    try:
+        item.click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", item)
+    wait.until(lambda d: d.find_element(By.ID, "ddlSymbols_Input").get_attribute("value").strip() == commodity)
+    _save_debug(driver, debug_dir, f"{commodity.lower()}_selected")
+
+
+def _choose_expiry(
+    driver: webdriver.Chrome,
+    wait: WebDriverWait,
+    debug_dir: Path,
+) -> str:
+    logger.info("Selecting expiry with rollover logic")
+    expiry_select = Select(wait.until(EC.visibility_of_element_located((By.ID, "ddlExpiry"))))
+    today = date.today()
+    valid: list[tuple[date, str, str]] = []
+    for option in expiry_select.options:
+        txt = option.text.strip()
+        if not txt or txt.lower().startswith("select"):
+            continue
+        try:
+            exp = datetime.strptime(txt, "%d%b%Y").date()
+        except ValueError:
+            continue
+        if exp >= today:
+            valid.append((exp, option.get_attribute("value"), txt))
+    if not valid:
+        raise RuntimeError("No valid future expiry found in dropdown")
+
+    valid.sort(key=lambda x: x[0])
+    chosen = valid[0]
+    if len(valid) > 1 and business_days_until(today, chosen[0]) <= TRADING_DAY_ROLLOVER_THRESHOLD:
+        logger.info(
+            f"Rollover triggered: {chosen[2]} is within "
+            f"{TRADING_DAY_ROLLOVER_THRESHOLD} trading days, switching to {valid[1][2]}"
+        )
+        chosen = valid[1]
+
+    expiry_select.select_by_value(chosen[1])
+    wait.until(lambda d: d.find_element(By.ID, "ddlExpiry").get_attribute("value") == chosen[1])
+    _save_debug(driver, debug_dir, "expiry_selected")
+    return chosen[2]
+
+
+def _set_one_date(driver: webdriver.Chrome, field_id: str, hidden_id: str, target: date) -> None:
+    ui_value = target.strftime("%d/%m/%Y")
+    hidden_value = target.strftime("%Y%m%d")
+    field = driver.find_element(By.ID, field_id)
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", field)
+    driver.execute_script(
+        """
+        const fieldId = arguments[0];
+        const hiddenId = arguments[1];
+        const year = arguments[2];
+        const monthZero = arguments[3];
+        const day = arguments[4];
+        const hiddenValue = arguments[5];
+        try {
+            $('#' + fieldId).datepick('setDate', new Date(year, monthZero, day));
+        } catch (e) {}
+        document.getElementById(hiddenId).value = hiddenValue;
+        """,
+        field_id,
+        hidden_id,
+        target.year,
+        target.month - 1,
+        target.day,
+        hidden_value,
+    )
+
+    actual_txt = driver.find_element(By.ID, field_id).get_attribute("value")
+    actual_hidden = driver.find_element(By.ID, hidden_id).get_attribute("value")
+    if actual_txt != ui_value or actual_hidden != hidden_value:
+        driver.execute_script(
+            """
+            document.getElementById(arguments[0]).value = arguments[1];
+            document.getElementById(arguments[2]).value = arguments[3];
+            """,
+            field_id,
+            ui_value,
+            hidden_id,
+            hidden_value,
+        )
+
+
+def _compute_from_date(csv_key: str, to_day: date, force_days: int) -> date | None:
+    if force_days > 0:
+        return to_day - timedelta(days=force_days - 1)
+    last_dt = _get_last_date(csv_key)
+    if last_dt:
+        candidate = last_dt + timedelta(days=1)
+        if candidate > to_day:
+            return None
+        return candidate
+    return previous_month_start(to_day)
+
+
+def _set_date_range(
+    driver: webdriver.Chrome,
+    wait: WebDriverWait,
+    debug_dir: Path,
+    from_day: date,
+    to_day: date,
+) -> tuple[str, str]:
+    if from_day > to_day:
+        raise RuntimeError("Invalid date range")
+    logger.info(f"Setting date range: {from_day:%d/%m/%Y} -> {to_day:%d/%m/%Y}")
+    wait.until(EC.visibility_of_element_located((By.ID, "txtFromDate")))
+    wait.until(EC.visibility_of_element_located((By.ID, "txtToDate")))
+    _set_one_date(driver, "txtFromDate", "hdnFromDate", from_day)
+    _set_one_date(driver, "txtToDate", "hdnToDate", to_day)
+
+    from_txt = driver.find_element(By.ID, "txtFromDate").get_attribute("value")
+    to_txt = driver.find_element(By.ID, "txtToDate").get_attribute("value")
+    from_hidden = driver.find_element(By.ID, "hdnFromDate").get_attribute("value")
+    to_hidden = driver.find_element(By.ID, "hdnToDate").get_attribute("value")
+    if from_txt != from_day.strftime("%d/%m/%Y") or from_hidden != from_day.strftime("%Y%m%d"):
+        raise RuntimeError("Left date was not set correctly")
+    if to_txt != to_day.strftime("%d/%m/%Y") or to_hidden != to_day.strftime("%Y%m%d"):
+        raise RuntimeError("Right date was not set correctly")
+    _save_debug(driver, debug_dir, "date_selected")
+    return from_txt, to_txt
+
+
+def _load_table(driver: webdriver.Chrome, wait: WebDriverWait, debug_dir: Path) -> None:
+    logger.info("Loading table")
+    _click_when_ready(driver, wait, (By.ID, "btnShowCommoditywise"))
+    wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#tblBhavCopyCommoditywise tbody tr")))
+    wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "#tblBhavCopyCommoditywise tbody tr")) > 0)
+    time.sleep(2)
+    _save_debug(driver, debug_dir, "table_loaded")
+
+
+def _extract_current_page_rows(driver: webdriver.Chrome) -> list[dict]:
+    rows: list[dict] = []
+    trs = driver.find_elements(By.CSS_SELECTOR, "#tblBhavCopyCommoditywise tbody tr")
+    for tr in trs:
+        tds = tr.find_elements(By.TAG_NAME, "td")
+        if len(tds) < 15:
+            continue
+        rows.append(
+            {
+                "Date": tds[0].text.strip(),
+                "Open": tds[6].text.strip(),
+                "High": tds[7].text.strip(),
+                "Low": tds[8].text.strip(),
+                "Close": tds[9].text.strip(),
+                "Volume": tds[11].text.strip(),
+                "OI": tds[14].text.strip(),
+                "_commodity": tds[2].text.strip(),
+                "_instrument": tds[1].text.strip(),
+                "_expiry": tds[3].text.strip(),
+            }
+        )
     return rows
 
 
+def _go_to_page_2(driver: webdriver.Chrome, wait: WebDriverWait, debug_dir: Path) -> bool:
+    pager_select_elem = driver.find_elements(By.ID, "ddlPagerBCCW")
+    if not pager_select_elem:
+        return False
+    pager_select = Select(pager_select_elem[0])
+    values = [opt.get_attribute("value") for opt in pager_select.options]
+    if "2" not in values:
+        return False
+    logger.info("Extracting page 2")
+    pager_select.select_by_value("2")
+    driver.execute_script("if (typeof doPagingBCCW === 'function') { doPagingBCCW(); }")
+    wait.until(lambda d: d.find_element(By.CSS_SELECTOR, "#tblBhavCopyCommoditywise tbody tr td").text.strip() != "Data not available.")
+    time.sleep(2)
+    _save_debug(driver, debug_dir, "page2")
+    return True
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
 
-def run_fetch(force_days: int = 5) -> dict:
-    today = date.today()
-    to_date_str = today.strftime("%d/%m/%Y")
-    summary = {}
+def _verify_rows(rows: list[dict], commodity: str, expiry: str) -> None:
+    if not rows:
+        raise RuntimeError("No data rows extracted")
+    bad_rows = [row for row in rows if row["_commodity"] != commodity]
+    if bad_rows:
+        raise RuntimeError(f"Commodity verification failed for {commodity}")
+    bad_expiry = [row for row in rows if row["_expiry"] != expiry]
+    if bad_expiry:
+        raise RuntimeError(f"Expiry verification failed for {commodity}")
 
-    driver = _setup_driver()
+
+def _strip_internal_fields(rows: list[dict]) -> list[dict]:
+    cleaned = []
+    for row in rows:
+        cleaned.append(
+            {
+                "Date": row["Date"],
+                "Open": row["Open"],
+                "High": row["High"],
+                "Low": row["Low"],
+                "Close": row["Close"],
+                "Volume": row["Volume"],
+                "OI": row["OI"],
+            }
+        )
+    return cleaned
+
+
+def _fetch_one(
+    driver: webdriver.Chrome,
+    commodity: str,
+    csv_key: str,
+    force_days: int,
+) -> CommodityRun | None:
+    to_day = date.today() - timedelta(days=1)
+    from_day = _compute_from_date(csv_key, to_day, force_days)
+    if from_day is None:
+        logger.info(f"{commodity}: Already up to date - skipping")
+        return None
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    debug_dir = DEBUG_ROOT / f"{csv_key}_{stamp}"
+    wait = WebDriverWait(driver, 30)
+
+    _open_page(driver, wait, debug_dir)
+    _switch_to_commodity_wise(driver, wait, debug_dir)
+    _select_instrument(driver, wait, debug_dir)
+    _select_commodity(driver, wait, debug_dir, commodity)
+    expiry = _choose_expiry(driver, wait, debug_dir)
+    from_txt, to_txt = _set_date_range(driver, wait, debug_dir, from_day, to_day)
+    _load_table(driver, wait, debug_dir)
+
+    rows = _extract_current_page_rows(driver)
+    if _go_to_page_2(driver, wait, debug_dir):
+        rows.extend(_extract_current_page_rows(driver))
+    _verify_rows(rows, commodity, expiry)
+
+    cleaned_rows = _strip_internal_fields(rows)
+    added = _merge_and_save(csv_key, cleaned_rows)
+    csv_path = str(DATA_DIR / f"{csv_key}_ohlc.csv")
+
+    return CommodityRun(
+        commodity=commodity,
+        csv_key=csv_key,
+        from_date=from_txt,
+        to_date=to_txt,
+        expiry=expiry,
+        total_rows=len(cleaned_rows),
+        added_rows=added,
+        csv_path=csv_path,
+        debug_dir=str(debug_dir),
+    )
+
+
+def run_fetch(force_days: int = 0, only_commodity: str | None = None) -> dict[str, str]:
+    summary: dict[str, str] = {}
+    targets = [
+        item for item in COMMODITIES
+        if only_commodity is None or item[0] == only_commodity
+    ]
+    if only_commodity and not targets:
+        raise ValueError(f"Unknown commodity filter: {only_commodity}")
+
+    driver = _build_driver()
     try:
-        for commodity, csv_key in COMMODITIES:
+        for commodity, csv_key in targets:
             try:
-                if force_days > 0:
-                    from_date = today - timedelta(days=force_days)
-                else:
-                    last_dt = _get_last_date(csv_key)
-                    if last_dt and last_dt >= today - timedelta(days=1):
-                        logger.info(f"{commodity}: Already up to date — skipping")
-                        summary[csv_key] = "SKIPPED"
-                        continue
-                    from_date = (last_dt + timedelta(days=1)) if last_dt else (today - timedelta(days=60))
-
-                rows = []
-                for attempt in range(2):
-                    rows = _fetch_commodity(driver, commodity, from_date.strftime("%d/%m/%Y"), to_date_str)
-                    if rows:
-                        break
-                    if attempt == 0:
-                        logger.warning(f"{commodity}: Empty result, retrying...")
-                        time.sleep(4)
-                        driver.get(MCX_URL)
-                        time.sleep(4)
-
-                if not rows:
-                    summary[csv_key] = "FAILED (no data)"
+                logger.info(f"{commodity}: Starting fetch")
+                run = _fetch_one(driver, commodity, csv_key, force_days)
+                if run is None:
+                    summary[csv_key] = "SKIPPED"
                     continue
-
-                added = _merge_and_save(csv_key, rows)
-                summary[csv_key] = f"OK ({len(rows)} rows, {added} new)"
-                time.sleep(2)
-
-            except Exception as e:
-                logger.error(f"{commodity}: {e}")
-                summary[csv_key] = f"FAILED ({e})"
-
+                summary[csv_key] = (
+                    f"OK ({run.total_rows} rows, {run.added_rows} new, "
+                    f"expiry={run.expiry}, range={run.from_date}->{run.to_date})"
+                )
+                logger.info(
+                    f"{commodity}: OK | rows={run.total_rows} | added={run.added_rows} | "
+                    f"expiry={run.expiry} | range={run.from_date}->{run.to_date}"
+                )
+            except Exception as exc:
+                logger.exception(f"{commodity}: fetch failed")
+                summary[csv_key] = f"FAILED ({exc})"
     finally:
         driver.quit()
 
@@ -317,11 +532,14 @@ def run_fetch(force_days: int = 5) -> dict:
 
 
 if __name__ == "__main__":
-    days = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-    logger.info(f"GitHub Actions MCX fetch — last {days} days")
-    result = run_fetch(force_days=days)
-    for k, v in result.items():
-        print(f"  {k:15} → {v}")
-    # Exit with error if all failed
-    if all("FAILED" in v for v in result.values()):
+    days = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    only_commodity = sys.argv[2].upper() if len(sys.argv) > 2 else None
+    if only_commodity:
+        logger.info(f"MCX fetch - {only_commodity} - mode days={days}")
+    else:
+        logger.info(f"MCX fetch - mode days={days}")
+    result = run_fetch(force_days=days, only_commodity=only_commodity)
+    for key, value in result.items():
+        print(f"  {key:15} -> {value}")
+    if result and all("FAILED" in value for value in result.values()):
         sys.exit(1)
