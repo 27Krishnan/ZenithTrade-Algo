@@ -98,16 +98,17 @@ class MarketScheduler:
         )
 
     def _run_mcx_fetcher(self):
-        import subprocess
-        logger.info("Running daily MCX Bhavcopy fetcher...")
+        """Fetch previous day's MCX OHLC data using Angel One API (cloud-compatible)."""
+        logger.info("Running daily MCX OHLC update via Angel One API...")
         try:
-            # Path relative to Papertrading root
-            python_exe = r"venv\Scripts\python.exe"
-            fetcher_script = r"mcx_bhavcopy\mcx_bhavcopy_fetcher_production.py"
-            subprocess.run([python_exe, fetcher_script], check=True)
-            logger.info("Daily MCX fetcher completed successfully")
+            from mcx_bhavcopy.angel_ohlc_updater import run_update
+            result = run_update(n_days=30)
+            if result.get("success"):
+                logger.info(f"MCX OHLC update complete: {result.get('summary', {})}")
+            else:
+                logger.error(f"MCX OHLC update failed: {result.get('reason')}")
         except Exception as e:
-            logger.error(f"Daily MCX fetcher failed: {e}")
+            logger.error(f"MCX OHLC updater error: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api
