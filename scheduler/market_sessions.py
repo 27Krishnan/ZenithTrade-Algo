@@ -98,14 +98,27 @@ class MarketScheduler:
         )
 
     def _run_mcx_fetcher(self):
-        """Fetch previous day's MCX OHLC from MCX WEBSITE via HTTP (no browser needed)."""
-        logger.info("Running daily MCX OHLC fetch from MCX website (HTTP mode)...")
+        """Pull latest MCX OHLC CSV data from GitHub (updated by GitHub Actions)."""
+        logger.info("Pulling daily MCX OHLC data from GitHub...")
         try:
-            from mcx_bhavcopy.mcx_http_fetcher import run_fetch
-            summary = run_fetch(force_days=0)  # smart incremental fetch
-            logger.info(f"MCX fetch complete: {summary}")
+            import subprocess
+            import os
+            
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            result = subprocess.run(
+                ["git", "pull", "origin", "main"], 
+                cwd=project_dir, 
+                capture_output=True, 
+                text=True
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"MCX data pull successful: {result.stdout.strip()}")
+            else:
+                logger.error(f"MCX data pull failed: {result.stderr.strip()}")
+                
         except Exception as e:
-            logger.error(f"MCX HTTP fetcher error: {e}")
+            logger.error(f"Error pulling MCX data from GitHub: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api
