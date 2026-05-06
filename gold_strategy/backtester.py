@@ -76,9 +76,11 @@ def run_backtest(instrument: str, date_str: str) -> dict:
 
     target_date = datetime.strptime(date_str, "%Y-%m-%d")
 
-    info = _find_near_month_token(instrument, as_of_date=target_date)
-    if not info:
+    tokens_info = _find_near_month_token(instrument, as_of_date=target_date)
+    if not tokens_info or not tokens_info.get("current"):
         return {"error": f"Could not resolve {instrument} contract"}
+        
+    info = tokens_info["current"]
 
     contract_warning = None
     from datetime import timedelta as _td
@@ -247,6 +249,8 @@ def _simulate_multiday(
     long_pnl = None
     short_lot1_pnl = None
     short_pnl = None
+    rollover_pnl_l = 0
+    rollover_pnl_s = 0
     mult = MULTIPLIERS.get(gl.instrument, 100)
     events = []
 
@@ -420,6 +424,57 @@ def _simulate_multiday(
 
             # wait_until_entry (09:10) is handled above by continue
 
+            if day_str == info["expiry"].strftime("%Y-%m-%d") and t == "22:30":
+                if long_state in ("ACTIVE_P1", "ACTIVE_P2") or short_state in ("ACTIVE_P1", "ACTIVE_P2"):
+                    new_tokens = _find_near_month_token(gl.instrument, as_of_date=sim_date)
+                    if new_tokens and new_tokens.get("next"):
+                        next_info = new_tokens["next"]
+                        next_intraday = _fetch_intraday(next_info, sim_date, angel_api)
+                        next_ltp = None
+                        for nc in next_intraday:
+                            if nc["time"] >= "22:30":
+                                next_ltp = nc["close"]
+                                break
+                        if not next_ltp and next_intraday:
+                            next_ltp = next_intraday[-1]["close"]
+                            
+                        if next_ltp:
+                            ev(day_str, t, f"⚠️ EXPIRY 1-HOUR WARNING: Initiating dual-contract rollover from {info['trading_symbol']} to {next_info['trading_symbol']}")
+                            if long_state in ("ACTIVE_P1", "ACTIVE_P2"):
+                                lots_rem = LOTS if long_state == "ACTIVE_P1" else 1
+                                close_pnl = round((last_close - long_entry) * lots_rem * mult, 2)
+                                rollover_pnl_l += close_pnl
+                                ev(day_str, t, f"🔄 LONG ROLLOVER: Closed {info['trading_symbol']} at {last_close:.2f} (PnL booked: ₹{close_pnl:+.2f}). Re-entering LONG in {next_info['trading_symbol']} at {next_ltp:.2f}")
+                                long_entry = next_ltp
+                            
+                            if short_state in ("ACTIVE_P1", "ACTIVE_P2"):
+                                lots_rem = LOTS if short_state == "ACTIVE_P1" else 1
+                                close_pnl = round((short_entry - last_close) * lots_rem * mult, 2)
+                                rollover_pnl_s += close_pnl
+                                ev(day_str, t, f"🔄 SHORT ROLLOVER: Closed {info['trading_symbol']} at {last_close:.2f} (PnL booked: ₹{close_pnl:+.2f}). Re-entering SHORT in {next_info['trading_symbol']} at {next_ltp:.2f}")
+                                short_entry = next_ltp
+                                
+                            info = next_info
+                            from .data_fetcher import _get_daily_candles
+                            new_hist = _get_daily_candles(info["token"], info["trading_symbol"], n_days=30)
+                            if new_hist:
+                                rolling_history = new_hist
+                                if long_state == "ACTIVE_P1":
+                                    sl1_l, desc = _recalc_sl1(gl, rolling_history, "long", long_entry)
+                                    ev(day_str, t, f"   -> New LONG SL1 calculated natively using Next Contract History: {sl1_l:.2f} | {desc}")
+                                elif long_state == "ACTIVE_P2":
+                                    sl2_l, desc = _recalc_sl2(gl, rolling_history, "long", long_entry)
+                                    ev(day_str, t, f"   -> New LONG SL2 calculated natively using Next Contract History: {sl2_l:.2f} | {desc}")
+                                    
+                                if short_state == "ACTIVE_P1":
+                                    sl1_s, desc = _recalc_sl1(gl, rolling_history, "short", short_entry)
+                                    ev(day_str, t, f"   -> New SHORT SL1 calculated natively using Next Contract History: {sl1_s:.2f} | {desc}")
+                                elif short_state == "ACTIVE_P2":
+                                    sl2_s, desc = _recalc_sl2(gl, rolling_history, "short", short_entry)
+                                    ev(day_str, t, f"   -> New SHORT SL2 calculated natively using Next Contract History: {sl2_s:.2f} | {desc}")
+                            else:
+                                ev(day_str, t, "   -> Failed to fetch history for new contract, SL values remain unchanged!")
+
             if day_num == 0:
                 if long_state == "PENDING" and e_l and h >= e_l:
                     long_state = "ACTIVE_P1"; long_entry = e_l; long_entry_date = day_str
@@ -432,7 +487,7 @@ def _simulate_multiday(
                 if l <= sl1_l:
                     exit_price = min(l, sl1_l)
                     pts = exit_price - long_entry
-                    long_pnl = round(pts * LOTS * mult, 2)
+                    long_pnl = round(pts * LOTS * mult + rollover_pnl_l, 2)
                     long_exit = exit_price; long_reason = "SL1_HIT"; long_exit_date = day_str
                     long_state = "CLOSED"
                     ev(day_str, t, f"📉 LONG SL1 HIT @ {exit_price:.2f}  |  Both lots closed  |  PnL=₹{long_pnl:+.2f}")
@@ -445,7 +500,7 @@ def _simulate_multiday(
                 if l <= sl2_l:
                     exit_price = min(l, sl2_l)
                     lot2_pnl = round((exit_price - long_entry) * mult, 2)
-                    long_pnl = round((long_lot1_pnl or 0) + lot2_pnl, 2)
+                    long_pnl = round((long_lot1_pnl or 0) + lot2_pnl + rollover_pnl_l, 2)
                     long_exit = exit_price; long_reason = "SL2_HIT"; long_exit_date = day_str
                     long_state = "CLOSED"
                     ev(day_str, t, f"🏁 LONG LOT-2 SL2 HIT @ {exit_price:.2f}  |  Lot-2 closed  |  Lot-2 PnL=₹{lot2_pnl:+.2f}  |  TOTAL=₹{long_pnl:+.2f}")
@@ -454,7 +509,7 @@ def _simulate_multiday(
                 if h >= sl1_s:
                     exit_price = max(h, sl1_s)
                     pts = short_entry - exit_price
-                    short_pnl = round(pts * LOTS * mult, 2)
+                    short_pnl = round(pts * LOTS * mult + rollover_pnl_s, 2)
                     short_exit = exit_price; short_reason = "SL1_HIT"; short_exit_date = day_str
                     short_state = "CLOSED"
                     ev(day_str, t, f"📉 SHORT SL1 HIT @ {exit_price:.2f}  |  Both lots closed  |  PnL=₹{short_pnl:+.2f}")
@@ -467,7 +522,7 @@ def _simulate_multiday(
                 if h >= sl2_s:
                     exit_price = max(h, sl2_s)
                     lot2_pnl = round((short_entry - exit_price) * mult, 2)
-                    short_pnl = round((short_lot1_pnl or 0) + lot2_pnl, 2)
+                    short_pnl = round((short_lot1_pnl or 0) + lot2_pnl + rollover_pnl_s, 2)
                     short_exit = exit_price; short_reason = "SL2_HIT"; short_exit_date = day_str
                     short_state = "CLOSED"
                     ev(day_str, t, f"🏁 SHORT LOT-2 SL2 HIT @ {exit_price:.2f} | Lot-2 closed | Lot-2 PnL=₹{lot2_pnl:+.2f} | TOTAL=₹{short_pnl:+.2f}")
@@ -495,11 +550,11 @@ def _simulate_multiday(
         if long_state in ("ACTIVE_P1", "ACTIVE_P2") and long_entry:
             live_pts = last_close - long_entry
             lots_rem = LOTS if long_state == "ACTIVE_P1" else 1
-            long_pnl = round((long_lot1_pnl or 0) + (live_pts * lots_rem * mult), 2)
+            long_pnl = round((long_lot1_pnl or 0) + (live_pts * lots_rem * mult) + rollover_pnl_l, 2)
         if short_state in ("ACTIVE_P1", "ACTIVE_P2") and short_entry:
             live_pts = short_entry - last_close
             lots_rem = LOTS if short_state == "ACTIVE_P1" else 1
-            short_pnl = round((short_lot1_pnl or 0) + (live_pts * lots_rem * mult), 2)
+            short_pnl = round((short_lot1_pnl or 0) + (live_pts * lots_rem * mult) + rollover_pnl_s, 2)
 
     effective_levels = _snapshot_levels(gl, e_l, e_s, t_l, t_s, sl1_l, sl1_s, sl2_l, sl2_s)
 

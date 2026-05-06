@@ -30,11 +30,14 @@ def _fetch_and_broadcast(broadcast=None):
 
     for inst in INSTRUMENTS:
         try:
-            data = fetch_instrument_data(inst)
-            if not data:
+            dual_data = fetch_instrument_data(inst)
+            if not dual_data or not dual_data.get("current"):
                 logger.warning(f"No data for {inst}")
                 levels_map[inst] = None
                 continue
+                
+            data = dual_data["current"]
+            
             gl = GoldLevels(
                 instrument=inst,
                 trading_symbol=data["trading_symbol"],

@@ -84,20 +84,30 @@ def _find_near_month_token(name: str, as_of_date: datetime | None = None) -> dic
 
     future = [c for c in candidates if c["expiry"] > reference_date]
     if not future:
-        chosen = candidates[-1]
+        chosen_current = candidates[-1]
+        chosen_next = None
     else:
         nearest = future[0]
         days_left = _count_working_days(reference_date, nearest["expiry"])
+        chosen_current = nearest
+        
+        # 10 Trading Days Rollover Rule
         if days_left <= 10 and len(future) > 1:
-            chosen = future[1]
+            chosen_next = future[1]
         else:
-            chosen = nearest
+            chosen_next = None
 
-    if as_of_date and chosen["expiry"] > as_of_date + timedelta(days=45):
-        logger.warning(f"{name}: Historical contract expired. Using {chosen['trading_symbol']}")
+    if as_of_date and chosen_current["expiry"] > as_of_date + timedelta(days=45):
+        logger.warning(f"{name}: Historical contract expired. Using {chosen_current['trading_symbol']}")
 
-    logger.info(f"Resolved {name} : {chosen['trading_symbol']} (token={chosen['token']}, expiry={chosen['expiry'].date()})")
-    return chosen
+    logger.info(f"Resolved {name} CURRENT : {chosen_current['trading_symbol']} (token={chosen_current['token']})")
+    if chosen_next:
+        logger.info(f"Resolved {name} NEXT    : {chosen_next['trading_symbol']} (token={chosen_next['token']})")
+        
+    return {
+        "current": chosen_current,
+        "next": chosen_next
+    }
 
 
 def _get_daily_candles(token: str, symbol: str, n_days: int = 7) -> list[dict]:
@@ -137,32 +147,49 @@ def _get_daily_candles(token: str, symbol: str, n_days: int = 7) -> list[dict]:
 
 def fetch_instrument_data(instrument: str) -> dict | None:
     """
-    Full pipeline: resolve token → fetch candles → return dict with levels data.
+    Full pipeline: resolve tokens → fetch candles for BOTH contracts (if applicable) → return dict.
     Returns None on failure.
     """
     if not angel_api.is_connected():
         logger.warning("Angel One not connected — cannot fetch data")
         return None
 
-    info = _find_near_month_token(instrument)
-    if not info:
+    tokens_info = _find_near_month_token(instrument)
+    if not tokens_info or not tokens_info.get("current"):
         return None
 
-    # Use local MCX CSV for historical candles
-    candles = get_mcx_ohlc_from_csv(instrument, n_days=10)
+    # Fetch for Current Contract
+    curr_info = tokens_info["current"]
+    curr_candles = _get_daily_candles(curr_info["token"], curr_info["trading_symbol"], n_days=10)
     
-    if len(candles) < 4:
-        logger.error(f"{instrument}: Need at least 4 completed candles from MCX CSV, got {len(candles)}")
-        # Fallback to Angel API if CSV fails (optional, but requested to stop using Angel for OHLC)
-        # candles = _get_daily_candles(info["token"], info["trading_symbol"], n_days=10)
+    if len(curr_candles) < 4:
+        logger.error(f"{instrument} (Current): Need at least 4 completed candles, got {len(curr_candles)}")
         return None
 
-    return {
-        "token":          info["token"],
-        "trading_symbol": info["trading_symbol"],
-        "lot_size":       int(info["lot_size"]),
-        "candles":        candles,   # newest first, already excludes today
+    result = {
+        "current": {
+            "token":          curr_info["token"],
+            "trading_symbol": curr_info["trading_symbol"],
+            "lot_size":       int(curr_info["lot_size"]),
+            "candles":        curr_candles,
+        }
     }
+
+    # Fetch for Next Contract (if in Rollover Window)
+    if tokens_info.get("next"):
+        next_info = tokens_info["next"]
+        next_candles = _get_daily_candles(next_info["token"], next_info["trading_symbol"], n_days=10)
+        if len(next_candles) >= 4:
+            result["next"] = {
+                "token":          next_info["token"],
+                "trading_symbol": next_info["trading_symbol"],
+                "lot_size":       int(next_info["lot_size"]),
+                "candles":        next_candles,
+            }
+        else:
+            logger.warning(f"{instrument} (Next): Not enough candles for next contract, disabling dual-mode.")
+
+    return result
 
 
 def get_ltp(token: str, symbol: str, exchange: str = "MCX") -> float | None:
