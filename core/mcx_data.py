@@ -3,7 +3,7 @@ import csv
 from datetime import datetime
 from loguru import logger
 
-DATA_DIR = r"c:\Users\Admin\OneDrive\Swap Data\Papertrading\data\mcx_ohlc"
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "mcx_ohlc")
 
 def get_mcx_ohlc_from_csv(commodity: str, n_days: int = 10, before_date: str | None = None) -> list[dict]:
     """
