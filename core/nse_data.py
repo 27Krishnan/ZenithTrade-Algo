@@ -3,15 +3,21 @@ import csv
 from datetime import datetime
 from loguru import logger
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "nse_ohlc")
 
-def get_nse_ohlc_from_csv(symbol: str, n_days: int = 10, before_date: str | None = None) -> list[dict]:
+def get_nse_ohlc_from_csv(symbol: str, n_days: int = 10, before_date: str | None = None, expiry_date=None) -> list[dict]:
     """
-    Reads OHLC data from the local NSE CSV database (e.g. nifty_nse_data.csv).
+    Reads OHLC data from the local NSE CSV database (e.g. nifty_26may2026_ohlc.csv).
     Returns a list of dicts (newest first).
     - before_date: "YYYY-MM-DD" (exclusive)
     """
-    file_path = os.path.join(DATA_DIR, f"{symbol.lower()}_nse_data.csv")
+    base_name = symbol.lower()
+    if expiry_date:
+        exp_str = expiry_date.strftime("%d%b%Y").lower()
+        file_path = os.path.join(DATA_DIR, f"{base_name}_{exp_str}_ohlc.csv")
+    else:
+        file_path = os.path.join(DATA_DIR, f"{base_name}_ohlc.csv")
+
     if not os.path.exists(file_path):
         logger.error(f"NSE CSV not found: {file_path}")
         return []
@@ -21,7 +27,7 @@ def get_nse_ohlc_from_csv(symbol: str, n_days: int = 10, before_date: str | None
         limit_dt = datetime.strptime(before_date, "%Y-%m-%d").date() if before_date else None
         today_str = datetime.now().strftime("%d-%b-%Y")
         
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 # Format: Date,Open,High,Low,Close

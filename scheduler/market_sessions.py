@@ -136,15 +136,13 @@ class MarketScheduler:
         logger.info("NSE close approaching - closing intraday positions")
         from core.engine import engine
         engine.close_all_intraday(exchange="NSE")
-        from notifications.telegram_bot import telegram_bot
-        telegram_bot.send("NSE market CLOSE 3:30 PM | All intraday positions closed")
+        # telegram_bot.send("NSE market CLOSE 3:30 PM | All intraday positions closed")
 
     def _on_mcx_close(self):
         logger.info("MCX close approaching - closing intraday positions")
         from core.engine import engine
         engine.close_all_intraday(exchange="MCX")
-        from notifications.telegram_bot import telegram_bot
-        telegram_bot.send("MCX market CLOSE 11:30 PM | All intraday positions closed")
+        # telegram_bot.send("MCX market CLOSE 11:30 PM | All intraday positions closed")
 
     def _daily_report(self):
         from database.db import get_session
@@ -175,8 +173,9 @@ class MarketScheduler:
             )
             logger.info(report_text)
 
-            from notifications.telegram_bot import telegram_bot
-            telegram_bot.send(report_text)
+            # from notifications.telegram_bot import telegram_bot
+            # telegram_bot.send(report_text)
+            pass
         finally:
             db.close()
 

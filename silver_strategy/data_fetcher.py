@@ -123,12 +123,15 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     if not tokens_info or not tokens_info.get("current"):
         return None
 
+    # Fetch for Current Contract
+    curr_info = tokens_info["current"]
+    
     # STRICT RULE ENFORCEMENT: Only use MCX CSV for OHLC data. 
     # Never use Angel One for historical Open/High/Low/Close.
-    mcx_candles = get_mcx_ohlc_from_csv(instrument, n_days=10)
+    mcx_candles_current = get_mcx_ohlc_from_csv(instrument, n_days=10, expiry_date=curr_info["expiry"])
     
-    if len(mcx_candles) < 4:
-        logger.error(f"{instrument} (Current): Need at least 4 completed candles from MCX CSV, got {len(mcx_candles)}")
+    if len(mcx_candles_current) < 4:
+        logger.error(f"{instrument} (Current): Need at least 4 completed candles from MCX CSV, got {len(mcx_candles_current)}")
         return None
 
     result = {
@@ -136,19 +139,20 @@ def fetch_instrument_data(instrument: str) -> dict | None:
             "token":          curr_info["token"],
             "trading_symbol": curr_info["trading_symbol"],
             "lot_size":       int(curr_info["lot_size"]),
-            "candles":        mcx_candles,
+            "candles":        mcx_candles_current,
         }
     }
 
     # Fetch for Next Contract (if in Rollover Window)
     if tokens_info.get("next"):
         next_info = tokens_info["next"]
-        # STRICT RULE: Use the same MCX CSV data for the next contract.
+        mcx_candles_next = get_mcx_ohlc_from_csv(instrument, n_days=10, expiry_date=next_info["expiry"])
+        # STRICT RULE: Use specific MCX CSV data for the next contract.
         result["next"] = {
             "token":          next_info["token"],
             "trading_symbol": next_info["trading_symbol"],
             "lot_size":       int(next_info["lot_size"]),
-            "candles":        mcx_candles,
+            "candles":        mcx_candles_next,
         }
 
     return result

@@ -8,6 +8,8 @@ from loguru import logger
 
 from .calculator import NiftyLevels, rt
 from data.angel_api import angel_api
+import pandas as pd
+from core.nse_data import get_nse_ohlc_from_csv
 
 LOTS = 2
 MULTIPLIER = 65
@@ -62,8 +64,14 @@ def run_backtest(instrument: str, date_str: str):
         token = token_info["token"]
         sym = token_info["symbol"]
 
-        hist_df = angel_api.get_historical_data(token=token, exchange="NFO", interval="ONE_DAY", days=10)
-        past_candles = hist_df[hist_df["date"] < date_str]
+        raw_candles = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=token_info.get("expiry"))
+        hist_df = pd.DataFrame(raw_candles) if raw_candles else pd.DataFrame(columns=["date", "high", "low", "open", "close"])
+        
+        if not hist_df.empty:
+            hist_df = hist_df.sort_values(by="date", ascending=False)
+            past_candles = hist_df[hist_df["date"] < date_str]
+        else:
+            past_candles = pd.DataFrame()
 
         if len(past_candles) < 2:
             logger.info(f"Nifty Backtest: Not enough data in {sym}, trying near-month fallback...")
@@ -73,8 +81,14 @@ def run_backtest(instrument: str, date_str: str):
             if near_info and near_info["token"] != token:
                 token = near_info["token"]
                 sym = near_info["symbol"]
-                hist_df = angel_api.get_historical_data(token=token, exchange="NFO", interval="ONE_DAY", days=10)
-                past_candles = hist_df[hist_df["date"] < date_str]
+                
+                raw_candles2 = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=near_info.get("expiry"))
+                hist_df = pd.DataFrame(raw_candles2) if raw_candles2 else pd.DataFrame(columns=["date", "high", "low", "open", "close"])
+                if not hist_df.empty:
+                    hist_df = hist_df.sort_values(by="date", ascending=False)
+                    past_candles = hist_df[hist_df["date"] < date_str]
+                else:
+                    past_candles = pd.DataFrame()
 
         if len(past_candles) < 2:
             return {"error": f"Not enough historical data before {date_str} even with near-month fallback."}
@@ -131,8 +145,9 @@ def run_backtest(instrument: str, date_str: str):
         window_low = 999999.0
         last_close = None
 
-        all_history = angel_api.get_historical_data(token, "NFO", "ONE_DAY", 30)
-        if all_history is not None and not all_history.empty:
+        raw_all = get_nse_ohlc_from_csv(instrument, n_days=40, expiry_date=token_info.get("expiry"))
+        all_history = pd.DataFrame(raw_all) if raw_all else pd.DataFrame(columns=["date", "high", "low", "open", "close"])
+        if not all_history.empty:
             all_history = all_history.sort_values(by="date", ascending=False)
 
         current_sim_date = target_date

@@ -93,7 +93,7 @@ def run_backtest(instrument: str, date_str: str) -> dict:
         )
 
     # 2. Fetch daily candles ending before entry date ───────────────
-    all_history = get_mcx_ohlc_from_csv(instrument, n_days=30, before_date=date_str)
+    all_history = get_mcx_ohlc_from_csv(instrument, n_days=30, before_date=date_str, expiry_date=info.get("expiry"))
     
     if not all_history:
         return {"error": f"No historical daily data found for {instrument} in CSV before {date_str}"}

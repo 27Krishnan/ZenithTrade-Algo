@@ -118,10 +118,10 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     
     # STRICT RULE ENFORCEMENT: Only use NSE CSV for OHLC data. 
     # Never use Angel One for historical Open/High/Low/Close.
-    nse_candles = get_nse_ohlc_from_csv(instrument, n_days=10)
+    nse_candles_current = get_nse_ohlc_from_csv(instrument, n_days=10, expiry_date=curr_info["expiry"])
     
-    if len(nse_candles) < 4:
-        logger.error(f"{instrument} (Current): Need at least 4 completed candles from NSE CSV, got {len(nse_candles)}")
+    if len(nse_candles_current) < 4:
+        logger.error(f"{instrument} (Current): Need at least 4 completed candles from NSE CSV, got {len(nse_candles_current)}")
         return None
 
     result = {
@@ -129,7 +129,7 @@ def fetch_instrument_data(instrument: str) -> dict | None:
             "token":          curr_info["token"],
             "trading_symbol": curr_info["trading_symbol"],
             "lot_size":       int(curr_info["lot_size"]),
-            "candles":        nse_candles,
+            "candles":        nse_candles_current,
             "expiry_date":    curr_info["expiry"],
         }
     }
@@ -137,12 +137,14 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     # Fetch for Next Contract (if in Rollover Window)
     if tokens_info.get("next"):
         next_info = tokens_info["next"]
-        # STRICT RULE: Use the same NSE CSV data for the next contract.
+        nse_candles_next = get_nse_ohlc_from_csv(instrument, n_days=10, expiry_date=next_info["expiry"])
+        
+        # STRICT RULE: Use the specific NSE CSV data for the next contract.
         result["next"] = {
             "token":          next_info["token"],
             "trading_symbol": next_info["trading_symbol"],
             "lot_size":       int(next_info["lot_size"]),
-            "candles":        nse_candles,
+            "candles":        nse_candles_next,
             "expiry_date":    next_info["expiry"],
         }
 
