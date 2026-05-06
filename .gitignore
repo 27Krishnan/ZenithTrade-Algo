@@ -23,9 +23,10 @@ brain/
 scratch/
 .gemini/
 
-# Trading Data (to keep local)
-data/mcx_ohlc/
-mcx_bhavcopy/
+# Trading Data — CSVs are tracked (updated by GitHub Actions daily)
+!data/mcx_ohlc/
+!data/mcx_ohlc/*.csv
+mcx_bhavcopy/*.log
 temp_lots.txt
 
 # IDE

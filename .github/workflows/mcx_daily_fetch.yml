@@ -1,0 +1,63 @@
+name: Daily MCX OHLC Data Fetch
+
+on:
+  schedule:
+    # 1:00 AM UTC = 6:30 AM IST (before cloud 7 AM fetch job)
+    - cron: '0 1 * * 1-5'  # Mon-Fri only
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  fetch-mcx-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 selenium webdriver-manager loguru python-dotenv
+
+      - name: Install Chrome
+        run: |
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google.list
+          sudo apt-get update -qq
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Fetch MCX OHLC data
+        run: |
+          python mcx_bhavcopy/mcx_actions_fetcher.py 5
+        env:
+          MCX_FETCH_DAYS: '5'
+
+      - name: Check if data was updated
+        id: check_changes
+        run: |
+          git diff --quiet data/mcx_ohlc/ || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push updated CSV files
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "MCX Data Bot"
+          git add data/mcx_ohlc/*.csv
+          git commit -m "auto: MCX OHLC data update $(date +'%Y-%m-%d')"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "### MCX Data Fetch Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Date: $(date +'%Y-%m-%d %H:%M IST')" >> $GITHUB_STEP_SUMMARY
+          echo "Files updated:" >> $GITHUB_STEP_SUMMARY
+          ls -la data/mcx_ohlc/*.csv >> $GITHUB_STEP_SUMMARY
