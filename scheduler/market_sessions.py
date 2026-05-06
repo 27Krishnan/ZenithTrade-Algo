@@ -98,14 +98,14 @@ class MarketScheduler:
         )
 
     def _run_mcx_fetcher(self):
-        """Fetch previous day's MCX OHLC from MCX WEBSITE via Playwright (cloud-compatible)."""
-        logger.info("Running daily MCX OHLC fetch from MCX website (Playwright)...")
+        """Fetch previous day's MCX OHLC from MCX WEBSITE via HTTP (no browser needed)."""
+        logger.info("Running daily MCX OHLC fetch from MCX website (HTTP mode)...")
         try:
-            from mcx_bhavcopy.mcx_playwright_fetcher import run_fetch
+            from mcx_bhavcopy.mcx_http_fetcher import run_fetch
             summary = run_fetch(force_days=0)  # smart incremental fetch
             logger.info(f"MCX fetch complete: {summary}")
         except Exception as e:
-            logger.error(f"MCX Playwright fetcher error: {e}")
+            logger.error(f"MCX HTTP fetcher error: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api
