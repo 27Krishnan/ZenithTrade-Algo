@@ -1,4 +1,4 @@
-name: Daily MCX OHLC Data Fetch
+name: Daily MCX & NSE OHLC Data Fetch
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/mcx_daily_fetch.yml'
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
+      - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
     # 1:00 AM UTC = 6:30 AM IST (before cloud 7 AM fetch job)
     - cron: '0 1 * * 1-5'  # Mon-Fri only
@@ -47,25 +48,31 @@ jobs:
         env:
           MCX_FETCH_DAYS: '0'
 
+      - name: Fetch NSE OHLC data
+        run: |
+          python nse_bhavcopy/nse_actions_fetcher.py
+
       - name: Check if data was updated
         id: check_changes
         run: |
-          git diff --quiet data/mcx_ohlc/ || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet data/mcx_ohlc/ data/nse_ohlc/ || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Commit and push updated CSV files
         if: steps.check_changes.outputs.changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "MCX Data Bot"
+          git config --local user.name "Market Data Bot"
           git add data/mcx_ohlc/*.csv
-          git commit -m "auto: MCX OHLC data update $(date +'%Y-%m-%d')"
+          git add data/nse_ohlc/*.csv
+          git commit -m "auto: MCX & NSE data update $(date +'%Y-%m-%d')"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
-          echo "### MCX Data Fetch Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### MCX & NSE Data Fetch Complete" >> $GITHUB_STEP_SUMMARY
           echo "Date: $(date +'%Y-%m-%d %H:%M IST')" >> $GITHUB_STEP_SUMMARY
           echo "Files updated:" >> $GITHUB_STEP_SUMMARY
           ls -la data/mcx_ohlc/*.csv >> $GITHUB_STEP_SUMMARY
+          ls -la data/nse_ohlc/*.csv >> $GITHUB_STEP_SUMMARY
