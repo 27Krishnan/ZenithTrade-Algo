@@ -141,6 +141,27 @@ def _extract_table(driver) -> list[dict]:
     return rows
 
 
+def _dismiss_popups(driver):
+    """Dismiss any cookie consent or overlay popups."""
+    from selenium.webdriver.common.by import By
+    popup_selectors = [
+        "button#onetrust-accept-btn-handler",
+        "button.accept-cookies",
+        "button[aria-label*='Accept']",
+        ".cookie-accept",
+        "#cookie-accept",
+        "button[class*='accept']",
+        "button[class*='cookie']",
+    ]
+    for sel in popup_selectors:
+        try:
+            btn = driver.find_element(By.CSS_SELECTOR, sel)
+            driver.execute_script("arguments[0].click();", btn)
+            time.sleep(1)
+        except Exception:
+            pass
+
+
 def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: str) -> list[dict]:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait, Select
@@ -150,25 +171,36 @@ def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: st
 
     logger.info(f"{commodity}: Opening MCX bhavcopy page...")
     driver.get(MCX_URL)
-    time.sleep(5)
+    time.sleep(6)
 
-    # Switch to Commodity Wise
+    # Dismiss any popups first
+    _dismiss_popups(driver)
+    time.sleep(1)
+
+    # Switch to Commodity Wise — use JS click to bypass overlay issues
     try:
-        toggle = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
+        toggle = WebDriverWait(driver, 12).until(
+            EC.presence_of_element_located(
                 (By.XPATH, "//label[contains(text(), 'Commodity Wise')]")
             )
         )
-        toggle.click()
+        driver.execute_script("arguments[0].scrollIntoView(true);", toggle)
+        time.sleep(1)
+        driver.execute_script("arguments[0].click();", toggle)
+        time.sleep(3)
+        logger.info(f"{commodity}: Switched to Commodity Wise mode")
+    except Exception as e:
+        logger.warning(f"{commodity}: Commodity Wise toggle issue: {e}")
+
+    # Select Instrument = FUTCOM
+    try:
+        Select(driver.find_element(By.ID, "ddlInstrument")).select_by_value("FUTCOM")
         time.sleep(2)
-    except Exception:
-        logger.warning(f"{commodity}: Could not click Commodity Wise toggle")
+    except Exception as e:
+        logger.error(f"{commodity}: Instrument select failed: {e}")
+        return []
 
-    # Select Instrument
-    Select(driver.find_element(By.ID, "ddlInstrument")).select_by_value("FUTCOM")
-    time.sleep(2)
-
-    # Select Commodity via JS
+    # Select Commodity via JS (Telerik RadComboBox)
     driver.execute_script(f"""
         var combo = $find("ddlSymbols");
         if (combo) {{
@@ -177,11 +209,11 @@ def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: st
             else {{ combo.set_text("{commodity}"); }}
         }}
     """)
-    time.sleep(2)
+    time.sleep(3)
 
     # Auto-select near-month expiry
     expiry_selected = False
-    for _ in range(5):
+    for attempt in range(5):
         try:
             sel = Select(driver.find_element(By.ID, "ddlExpiry"))
             for opt in sel.options:
@@ -207,13 +239,13 @@ def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: st
         logger.error(f"{commodity}: No valid expiry found")
         return []
 
-    # Set date range
+    # Set date range via JS
     driver.execute_script(f"document.getElementById('txtFromDate').value = '{from_date_str}';")
     driver.execute_script(f"document.getElementById('txtToDate').value = '{to_date_str}';")
 
-    # Click Show
+    # Click Show via JS
     driver.execute_script("document.getElementById('btnShowCommoditywise').click();")
-    time.sleep(5)
+    time.sleep(6)
 
     rows = _extract_table(driver)
     logger.info(f"{commodity}: Page 1 → {len(rows)} rows")
@@ -221,7 +253,7 @@ def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: st
     # Page 2
     try:
         p2 = driver.find_element(By.LINK_TEXT, "2")
-        p2.click()
+        driver.execute_script("arguments[0].click();", p2)
         time.sleep(3)
         extra = _extract_table(driver)
         logger.info(f"{commodity}: Page 2 → {len(extra)} rows")
@@ -230,6 +262,7 @@ def _fetch_commodity(driver, commodity: str, from_date_str: str, to_date_str: st
         pass
 
     return rows
+
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
