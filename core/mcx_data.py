@@ -5,13 +5,21 @@ from loguru import logger
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "mcx_ohlc")
 
-def get_mcx_ohlc_from_csv(commodity: str, n_days: int = 10, before_date: str | None = None) -> list[dict]:
+def get_mcx_ohlc_from_csv(commodity: str, n_days: int = 10, before_date: str | None = None, expiry_date=None) -> list[dict]:
     """
     Reads OHLC data for a commodity from the local MCX CSV database.
+    If expiry_date (datetime) is provided, reads from contract-specific file (e.g. goldm_05may2026_ohlc.csv).
+    Otherwise falls back to the generic file.
     Returns a list of dicts (newest first).
     - before_date: "YYYY-MM-DD" (exclusive)
     """
-    file_path = os.path.join(DATA_DIR, f"{commodity.lower()}_ohlc.csv")
+    base_name = commodity.lower()
+    if expiry_date:
+        exp_str = expiry_date.strftime("%d%b%Y").lower()
+        file_path = os.path.join(DATA_DIR, f"{base_name}_{exp_str}_ohlc.csv")
+    else:
+        file_path = os.path.join(DATA_DIR, f"{base_name}_ohlc.csv")
+        
     if not os.path.exists(file_path):
         logger.error(f"MCX CSV not found: {file_path}")
         return []

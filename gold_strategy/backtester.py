@@ -455,10 +455,11 @@ def _simulate_multiday(
                                 short_entry = next_ltp
                                 
                             info = next_info
-                            from .data_fetcher import _get_daily_candles
-                            new_hist = _get_daily_candles(info["token"], info["trading_symbol"], n_days=30)
-                            if new_hist:
-                                rolling_history = new_hist
+                            from .data_fetcher import get_mcx_ohlc_from_csv
+                            # Strict Rule: Use MCX CSV for ALL OHLC data, including next contract during rollover!
+                            new_hist = get_mcx_ohlc_from_csv(gl.instrument, n_days=30, before_date=day_str, expiry_date=info["expiry"])
+                            if new_hist and len(new_hist) >= 4:
+                                rolling_history = new_hist[:4]
                                 if long_state == "ACTIVE_P1":
                                     sl1_l, desc = _recalc_sl1(gl, rolling_history, "long", long_entry)
                                     ev(day_str, t, f"   -> New LONG SL1 calculated natively using Next Contract History: {sl1_l:.2f} | {desc}")

@@ -254,12 +254,12 @@ def _select_commodity(
     _save_debug(driver, debug_dir, f"{commodity.lower()}_selected")
 
 
-def _choose_expiry(
+def _get_active_expiries(
     driver: webdriver.Chrome,
     wait: WebDriverWait,
     debug_dir: Path,
-) -> str:
-    logger.info("Selecting expiry with rollover logic")
+) -> list[tuple[date, str, str]]:
+    logger.info("Extracting valid expiries")
     expiry_select = Select(wait.until(EC.visibility_of_element_located((By.ID, "ddlExpiry"))))
     today = date.today()
     valid: list[tuple[date, str, str]] = []
@@ -277,18 +277,7 @@ def _choose_expiry(
         raise RuntimeError("No valid future expiry found in dropdown")
 
     valid.sort(key=lambda x: x[0])
-    chosen = valid[0]
-    if len(valid) > 1 and business_days_until(today, chosen[0]) <= TRADING_DAY_ROLLOVER_THRESHOLD:
-        logger.info(
-            f"Rollover triggered: {chosen[2]} is within "
-            f"{TRADING_DAY_ROLLOVER_THRESHOLD} trading days, switching to {valid[1][2]}"
-        )
-        chosen = valid[1]
-
-    expiry_select.select_by_value(chosen[1])
-    wait.until(lambda d: d.find_element(By.ID, "ddlExpiry").get_attribute("value") == chosen[1])
-    _save_debug(driver, debug_dir, "expiry_selected")
-    return chosen[2]
+    return valid[:2]  # Return top 2 nearest expiries
 
 
 def _set_one_date(driver: webdriver.Chrome, field_id: str, hidden_id: str, target: date) -> None:
@@ -454,13 +443,9 @@ def _fetch_one(
     commodity: str,
     csv_key: str,
     force_days: int,
-) -> CommodityRun | None:
+) -> list[CommodityRun]:
     to_day = date.today() - timedelta(days=1)
-    from_day = _compute_from_date(csv_key, to_day, force_days)
-    if from_day is None:
-        logger.info(f"{commodity}: Already up to date - skipping")
-        return None
-
+    
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = DEBUG_ROOT / f"{csv_key}_{stamp}"
     wait = WebDriverWait(driver, 30)
@@ -469,30 +454,56 @@ def _fetch_one(
     _switch_to_commodity_wise(driver, wait, debug_dir)
     _select_instrument(driver, wait, debug_dir)
     _select_commodity(driver, wait, debug_dir, commodity)
-    expiry = _choose_expiry(driver, wait, debug_dir)
-    from_txt, to_txt = _set_date_range(driver, wait, debug_dir, from_day, to_day)
-    _load_table(driver, wait, debug_dir)
+    
+    expiries = _get_active_expiries(driver, wait, debug_dir)
+    runs = []
+    
+    for exp_date, exp_val, exp_txt in expiries:
+        exp_str = exp_date.strftime("%d%b%Y").lower()
+        specific_csv_key = f"{csv_key}_{exp_str}"
+        
+        from_day = _compute_from_date(specific_csv_key, to_day, force_days)
+        if from_day is None:
+            logger.info(f"{commodity} ({exp_txt}): Already up to date - skipping")
+            continue
+            
+        logger.info(f"Fetching {commodity} for expiry {exp_txt}")
+        
+        # Select this expiry
+        expiry_select = Select(wait.until(EC.visibility_of_element_located((By.ID, "ddlExpiry"))))
+        expiry_select.select_by_value(exp_val)
+        wait.until(lambda d: d.find_element(By.ID, "ddlExpiry").get_attribute("value") == exp_val)
+        
+        from_txt, to_txt = _set_date_range(driver, wait, debug_dir, from_day, to_day)
+        _load_table(driver, wait, debug_dir)
 
-    rows = _extract_current_page_rows(driver)
-    if _go_to_page_2(driver, wait, debug_dir):
-        rows.extend(_extract_current_page_rows(driver))
-    _verify_rows(rows, commodity, expiry)
+        rows = _extract_current_page_rows(driver)
+        if _go_to_page_2(driver, wait, debug_dir):
+            rows.extend(_extract_current_page_rows(driver))
+        
+        try:
+            _verify_rows(rows, commodity, exp_txt)
+        except Exception as e:
+            logger.warning(f"Verification failed for {commodity} ({exp_txt}): {e}")
+            continue
 
-    cleaned_rows = _strip_internal_fields(rows)
-    added = _merge_and_save(csv_key, cleaned_rows)
-    csv_path = str(DATA_DIR / f"{csv_key}_ohlc.csv")
+        cleaned_rows = _strip_internal_fields(rows)
+        added = _merge_and_save(specific_csv_key, cleaned_rows)
+        csv_path = str(DATA_DIR / f"{specific_csv_key}_ohlc.csv")
 
-    return CommodityRun(
-        commodity=commodity,
-        csv_key=csv_key,
-        from_date=from_txt,
-        to_date=to_txt,
-        expiry=expiry,
-        total_rows=len(cleaned_rows),
-        added_rows=added,
-        csv_path=csv_path,
-        debug_dir=str(debug_dir),
-    )
+        runs.append(CommodityRun(
+            commodity=commodity,
+            csv_key=specific_csv_key,
+            from_date=from_txt,
+            to_date=to_txt,
+            expiry=exp_txt,
+            total_rows=len(cleaned_rows),
+            added_rows=added,
+            csv_path=csv_path,
+            debug_dir=str(debug_dir),
+        ))
+        
+    return runs
 
 
 def run_fetch(force_days: int = 0, only_commodity: str | None = None) -> dict[str, str]:
@@ -509,14 +520,16 @@ def run_fetch(force_days: int = 0, only_commodity: str | None = None) -> dict[st
         for commodity, csv_key in targets:
             try:
                 logger.info(f"{commodity}: Starting fetch")
-                run = _fetch_one(driver, commodity, csv_key, force_days)
-                if run is None:
+                runs = _fetch_one(driver, commodity, csv_key, force_days)
+                if not runs:
                     summary[csv_key] = "SKIPPED"
                     continue
-                summary[csv_key] = (
-                    f"OK ({run.total_rows} rows, {run.added_rows} new, "
-                    f"expiry={run.expiry}, range={run.from_date}->{run.to_date})"
-                )
+                
+                for run in runs:
+                    summary[run.csv_key] = (
+                        f"OK ({run.total_rows} rows, {run.added_rows} new, "
+                        f"expiry={run.expiry}, range={run.from_date}->{run.to_date})"
+                    )
                 logger.info(
                     f"{commodity}: OK | rows={run.total_rows} | added={run.added_rows} | "
                     f"expiry={run.expiry} | range={run.from_date}->{run.to_date}"

@@ -116,41 +116,6 @@ def _find_near_month_token(name: str, as_of_date: datetime | None = None) -> dic
     }
 
 
-def _get_daily_candles(token: str, symbol: str, n_days: int = 7) -> list[dict]:
-    """Fetch last n_days of daily candles from Angel One."""
-    try:
-        to_date   = datetime.now().strftime("%Y-%m-%d 23:59")
-        from_date = (datetime.now() - timedelta(days=n_days + 5)).strftime("%Y-%m-%d 09:00")
-        raw = angel_api.get_candle_data(
-            token=token,
-            exchange="MCX",
-            interval="ONE_DAY",
-            from_date=from_date,
-            to_date=to_date,
-        )
-        if not raw:
-            logger.warning(f"No candle data for {symbol}")
-            return []
-
-        candles = []
-        for c in raw:
-            # Angel One format: [timestamp, open, high, low, close, volume]
-            ts, o, high, low, close, vol = c
-            date_str = ts[:10]  # "YYYY-MM-DD"
-            candles.append({"date": date_str, "high": float(high), "low": float(low),
-                             "open": float(o), "close": float(close)})
-        # Sort newest first; exclude today's incomplete candle
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        candles = [c for c in candles if c["date"] < today_str]
-        candles.sort(key=lambda x: x["date"], reverse=True)
-        # Keep only completed trading days
-        logger.info(f"{symbol}: {len(candles)} completed candles fetched")
-        return candles
-    except Exception as e:
-        logger.error(f"Candle fetch error for {symbol}: {e}")
-        return []
-
-
 def fetch_instrument_data(instrument: str) -> dict | None:
     """
     Full pipeline: resolve tokens → fetch candles for BOTH contracts (if applicable) → return dict.
@@ -167,12 +132,12 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     # Fetch for Current Contract
     curr_info = tokens_info["current"]
     
-    # We use MCX CSV for fallback, but for dual-contract accuracy, we should rely on API if possible.
-    # However, to preserve existing logic, we fetch CSV for current contract
-    curr_candles = get_mcx_ohlc_from_csv(instrument, n_days=10)
+    # STRICT RULE ENFORCEMENT: Only use MCX CSV for OHLC data. 
+    # Never use Angel One for historical Open/High/Low/Close.
+    curr_mcx_candles = get_mcx_ohlc_from_csv(instrument, n_days=10, expiry_date=curr_info["expiry"])
     
-    if len(curr_candles) < 4:
-        logger.error(f"{instrument} (Current): Need at least 4 completed candles from MCX CSV, got {len(curr_candles)}")
+    if len(curr_mcx_candles) < 4:
+        logger.error(f"{instrument} (Current): Need at least 4 completed candles from MCX CSV, got {len(curr_mcx_candles)}")
         return None
 
     result = {
@@ -180,7 +145,7 @@ def fetch_instrument_data(instrument: str) -> dict | None:
             "token":          curr_info["token"],
             "trading_symbol": curr_info["trading_symbol"],
             "lot_size":       int(curr_info["lot_size"]),
-            "candles":        curr_candles,
+            "candles":        curr_mcx_candles,
             "expiry_date":    curr_info["expiry"],
         }
     }
@@ -188,18 +153,18 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     # Fetch for Next Contract (if in Rollover Window)
     if tokens_info.get("next"):
         next_info = tokens_info["next"]
-        # Next contract MUST use Angel API because CSV only tracks near-month
-        next_candles = _get_daily_candles(next_info["token"], next_info["trading_symbol"], n_days=10)
-        if len(next_candles) >= 4:
+        # STRICT RULE: Fetch contract-specific data from MCX CSV for the next contract.
+        next_mcx_candles = get_mcx_ohlc_from_csv(instrument, n_days=10, expiry_date=next_info["expiry"])
+        if len(next_mcx_candles) >= 4:
             result["next"] = {
                 "token":          next_info["token"],
                 "trading_symbol": next_info["trading_symbol"],
                 "lot_size":       int(next_info["lot_size"]),
-                "candles":        next_candles,
+                "candles":        next_mcx_candles,
                 "expiry_date":    next_info["expiry"],
             }
         else:
-            logger.warning(f"{instrument} (Next): Not enough candles from Angel API, disabling dual-mode.")
+            logger.warning(f"{instrument} (Next): Missing or insufficient MCX CSV data for next contract, fallback to current only.")
 
     return result
 
