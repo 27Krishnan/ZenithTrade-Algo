@@ -145,13 +145,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         "index.html",
         {
             "request": request,
-            "open_trades": open_trades,
-            "closed_trades": [t for t in all_trades if t.status == TradeStatus.CLOSED][:20],
-            "total_pnl": session_pnl,
+            "open_trades": [_trade_dict(t) for t in open_trades],
+            "closed_trades": [_trade_dict(t) for t in all_trades if t.status == TradeStatus.CLOSED][:20],
+            "total_pnl": float(session_pnl),
             "total_trades": len(today_closed),
             "winning_trades": sum(1 for t in today_closed if (t.gross_pnl or 0) > 0),
-            "owners": owners,
-            "strategies": all_strategies,
+            "owners": [{"id": o.id, "name": o.name, "color": o.color} for o in owners],
+            "strategies": [{"name": (s.name if hasattr(s, 'name') else s.get('name', 'Unknown'))} for s in all_strategies],
         }
     )
 
