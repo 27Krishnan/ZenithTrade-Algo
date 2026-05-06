@@ -10,6 +10,7 @@ Schedule: Daily at 11:45 PM IST (after MCX closes at 11:30 PM)
 import os
 import csv
 import sys
+import time
 from datetime import datetime, timedelta, date
 from loguru import logger
 
@@ -211,6 +212,7 @@ def run_update(n_days: int = 30) -> dict:
             continue
 
         ok = _update_csv(csv_key, candles)
+        time.sleep(2)  # Avoid Angel One API rate limit
         summary[csv_key] = f"OK ({len(candles)} candles)" if ok else "FAILED (csv write)"
 
     # Also copy naturalgasm as natgasmini alias if needed
