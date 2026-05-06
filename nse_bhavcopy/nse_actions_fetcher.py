@@ -128,25 +128,42 @@ def fetch_nifty_data():
             csv_key = f"nifty_{exp_str}"
             logger.info(f"Fetching NIFTY for expiry {exp_txt}")
             
-            # REFRESH PAGE STATE FOR EACH EXPIRY
-            driver.refresh()
+            # RE-NAVIGATE TO ENSURE CLEAN STATE FOR EACH EXPIRY
+            driver.get("https://www.nseindia.com/get-quote/derivatives/NIFTY/NIFTY%2050")
             _wait_for_table_load(driver, wait)
             
             tab = wait.until(EC.element_to_be_clickable((By.ID, "derivatives-tabs-tab-historical-data")))
             driver.execute_script("arguments[0].click();", tab)
             _wait_for_table_load(driver, wait)
             
+            # Select Index Futures
             data_type_select = Select(wait.until(EC.presence_of_element_located((By.XPATH, '(//select[@class="custom-select width-200"])[1]'))))
             data_type_select.select_by_visible_text("Index Futures")
             _wait_for_table_load(driver, wait)
             
+            # Select Year
             year_select = Select(wait.until(EC.presence_of_element_located((By.XPATH, '(//select[@class="custom-select width-200"])[2]'))))
             year_select.select_by_visible_text("2026")
             _wait_for_table_load(driver, wait)
             
-            # Select Expiry
-            expiry_select = Select(wait.until(EC.presence_of_element_located((By.XPATH, '(//select[@class="custom-select width-200"])[3]'))))
-            expiry_select.select_by_visible_text(exp_txt)
+            # Select Expiry (with retry)
+            expiry_found = False
+            for attempt in range(3):
+                try:
+                    expiry_select_elem = wait.until(EC.presence_of_element_located((By.XPATH, '(//select[@class="custom-select width-200"])[3]')))
+                    expiry_select = Select(expiry_select_elem)
+                    expiry_select.select_by_visible_text(exp_txt)
+                    expiry_found = True
+                    break
+                except Exception:
+                    logger.warning(f"Retry {attempt+1} selecting expiry {exp_txt}")
+                    time.sleep(2)
+            
+            if not expiry_found:
+                logger.error(f"Failed to select expiry {exp_txt} after retries")
+                summary[csv_key] = f"FAILED: Expiry {exp_txt} not found"
+                continue
+
             _wait_for_table_load(driver, wait)
             
             # Click 1Y button to expand date range
