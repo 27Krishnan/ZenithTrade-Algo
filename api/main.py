@@ -141,19 +141,18 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         if not exists:
             all_strategies.append(ms)
 
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "open_trades": [_trade_dict(t) for t in open_trades],
-            "closed_trades": [_trade_dict(t) for t in all_trades if t.status == TradeStatus.CLOSED][:20],
-            "total_pnl": float(session_pnl),
-            "total_trades": len(today_closed),
-            "winning_trades": sum(1 for t in today_closed if (t.gross_pnl or 0) > 0),
-            "owners": [{"id": o.id, "name": o.name, "color": o.color} for o in owners],
-            "strategies": [{"name": (s.name if hasattr(s, 'name') else s.get('name', 'Unknown'))} for s in all_strategies],
-        }
-    )
+    context = {
+        "request": request,
+        "open_trades": [_trade_dict(t) for t in open_trades],
+        "closed_trades": [_trade_dict(t) for t in all_trades if t.status == TradeStatus.CLOSED][:20],
+        "total_pnl": float(session_pnl),
+        "total_trades": len(today_closed),
+        "winning_trades": sum(1 for t in today_closed if (t.gross_pnl or 0) > 0),
+        "owners": [{"id": o.id, "name": o.name, "color": o.color} for o in owners],
+        "strategies": [{"name": (s.name if hasattr(s, 'name') else s.get('name', 'Unknown'))} for s in all_strategies],
+    }
+    rendered_content = templates.get_template("index.html").render(context)
+    return HTMLResponse(content=rendered_content)
 
 
 # ─── Signal endpoints ─────────────────────────────────────────────────────────
