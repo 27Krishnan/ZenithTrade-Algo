@@ -175,7 +175,7 @@ def _row_to_live(row) -> dict:
     raw_days = lvl.get("raw_days", [])
     initial_ltp = raw_days[0].get("close") if raw_days else None
 
-    return {
+    d = {
         "instrument":       row.instrument,
         "trading_symbol":   row.trading_symbol,
         "token":            row.token,
@@ -200,7 +200,7 @@ def _row_to_live(row) -> dict:
         "ltp":              initial_ltp,
         "last_update":      None,
     }
-    _recalculate_active_levels(d)
+    _recalculate_active_levels(d)  # Apply entry-price-based overrides if trade is active
     return d
 
 def rt(val):
@@ -711,5 +711,5 @@ def start_monitor():
                 logger.error(f"Natural Gas Strategy monitor error: {e}")
             time.sleep(5)
 
-    _thread = threading.Thread(target=_loop, daemon=True, name="GoldMonitor")
+    _thread = threading.Thread(target=_loop, daemon=True, name="NaturalGasMonitor")
     _thread.start()
