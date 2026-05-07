@@ -85,8 +85,10 @@ async def run_strategy_backtest(payload: StrategyBacktestPayload):
     try:
         return strategy.run_backtest(payload.instrument, payload.date)
     except Exception as e:
-        logger.exception(f"Backtest failed for {payload.strategy}/{payload.instrument}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Backtest failed for {payload.strategy}/{payload.instrument}:\n{tb}")
+        raise HTTPException(status_code=500, detail=tb)
 
 
 @router.post("/api/strategy-hub/fetch/{strategy}")
