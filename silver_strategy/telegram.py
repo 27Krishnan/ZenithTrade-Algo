@@ -4,6 +4,7 @@ Silver Strategy — Telegram Alerts (Simplified)
 import sys, os, requests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from loguru import logger
+from config.settings import settings
 from .database import get_setting
 
 def _token() -> str: return get_setting("telegram_bot_token", "")
@@ -13,6 +14,8 @@ def _is_enabled(key: str) -> bool:
     return get_setting(key, "true") == "true"
 
 def send(message: str, setting_key: str = None) -> bool:
+    if not settings.ENABLE_TELEGRAM_ALERTS:
+        return False
     if setting_key and not _is_enabled(setting_key):
         return False
     token, chat_id = _token(), _chat_id()

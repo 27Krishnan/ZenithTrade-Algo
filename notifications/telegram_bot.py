@@ -10,6 +10,9 @@ class TelegramBot:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
 
     def send(self, message: str) -> bool:
+        if not settings.ENABLE_TELEGRAM_ALERTS:
+            logger.debug("Telegram alerts globally disabled")
+            return False
         if not self.token or not self.chat_id:
             logger.debug("Telegram not configured, skipping notification")
             return False

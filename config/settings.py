@@ -18,6 +18,7 @@ class Settings:
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    ENABLE_TELEGRAM_ALERTS: bool = os.getenv("ENABLE_TELEGRAM_ALERTS", "true").lower() == "true"
 
     # App
     INITIAL_CAPITAL: float = float(os.getenv("INITIAL_CAPITAL", "1000000"))

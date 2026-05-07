@@ -27,6 +27,7 @@ Message types and their format:
 import sys, os, requests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from loguru import logger
+from config.settings import settings
 from .database import get_setting
 
 
@@ -39,6 +40,8 @@ def _chat_id() -> str:
     return get_setting("telegram_chat_id", "")
 
 def send(message: str) -> bool:
+    if not settings.ENABLE_TELEGRAM_ALERTS:
+        return False
     token   = _token()
     chat_id = _chat_id()
     if not token or not chat_id:
