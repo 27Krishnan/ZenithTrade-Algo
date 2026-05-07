@@ -712,7 +712,7 @@ def start_monitor():
                 _monitor_tick()
             except Exception as e:
                 logger.error(f"Natural Gas Strategy monitor error: {e}")
-            time.sleep(5)
+            time.sleep(10)
 
     _thread = threading.Thread(target=_loop, daemon=True, name="NaturalGasMonitor")
     _thread.start()

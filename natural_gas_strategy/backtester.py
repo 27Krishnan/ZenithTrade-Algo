@@ -64,9 +64,11 @@ def run_backtest(instrument: str, date_str: str) -> dict:
     target_date = datetime.strptime(date_str, "%Y-%m-%d")
 
     # ── 1. Resolve contract — find the near-month AS OF the backtest date ────
-    info = _find_near_month_token(instrument, as_of_date=target_date)
-    if not info:
+    tokens_info = _find_near_month_token(instrument, as_of_date=target_date)
+    if not tokens_info or not tokens_info.get("current"):
         return {"error": f"Could not resolve {instrument} contract"}
+    
+    info = tokens_info["current"]
 
     # Detect if the historically-correct contract is unavailable (expired & removed)
     contract_warning = None

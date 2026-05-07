@@ -763,7 +763,7 @@ def start_monitor():
                 _monitor_tick()
             except Exception as e:
                 logger.error(f"Gold Strategy monitor error: {e}")
-            time.sleep(5)
+            time.sleep(10)
 
     _thread = threading.Thread(target=_loop, daemon=True, name="GoldMonitor")
     _thread.start()

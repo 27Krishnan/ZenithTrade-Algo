@@ -603,7 +603,7 @@ def _send_to_main_app(inst, action, price, sl, targets, state, auto):
         payload = {
             "symbol": state["trading_symbol"], "exchange": "NSE", "instrument_type": "FUTIDX",
             "action": action, "entry_price": price, "stop_loss": sl, "targets": targets,
-            "quantity": LOTS, "lot_size": 1, "trade_type": "POSITIONAL", "strategy": STRATEGY_NAME,
+            "quantity": LOTS * MULTIPLIERS.get(inst, 25), "lot_size": 1, "trade_type": "POSITIONAL", "strategy": STRATEGY_NAME,
         }
         engine.add_trade(payload, lot_size=1, strategy=STRATEGY_NAME)
     except Exception as e: logger.error(f"Trade error: {e}")
@@ -623,6 +623,6 @@ def start_monitor():
                 ts = _time_str()
                 _monitor_tick()
             except Exception as e: logger.error(f"{STRATEGY_NAME} monitor error: {e}")
-            time.sleep(5)
+            time.sleep(10)
     _thread = threading.Thread(target=_loop, daemon=True)
     _thread.start()

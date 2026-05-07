@@ -1,6 +1,6 @@
 """
 Data Fetcher — Fetches 4-day & 2-day OHLC from Angel One MCX candle API.
-Instruments: SILVER, SILVERM, SILVERMIC
+Instruments: NATURALGAS, NATURALGASM
 """
 import sys
 import os
@@ -128,8 +128,8 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     # Never use Angel One for historical Open/High/Low/Close.
     mcx_candles_current = get_mcx_ohlc_from_csv(instrument, n_days=10, expiry_date=curr_info["expiry"])
     
-    if len(mcx_candles_current) < 4:
-        logger.error(f"{instrument} (Current): Need at least 4 completed candles from MCX CSV, got {len(mcx_candles_current)}")
+    if len(mcx_candles_current) < 3:
+        logger.error(f"{instrument} (Current): Need at least 3 completed candles from MCX CSV, got {len(mcx_candles_current)}")
         return None
 
     result = {

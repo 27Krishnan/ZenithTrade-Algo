@@ -768,7 +768,7 @@ def start_monitor():
                 _monitor_tick()
             except Exception as e:
                 logger.error(f"Silver Strategy monitor error: {e}")
-            time.sleep(5)
+            time.sleep(10)
 
     _thread = threading.Thread(target=_loop, daemon=True, name="SilverMonitor")
     _thread.start()
