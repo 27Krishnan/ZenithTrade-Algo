@@ -82,7 +82,11 @@ async def run_strategy_backtest(payload: StrategyBacktestPayload):
         strategy = strategy_registry.get(payload.strategy)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return strategy.run_backtest(payload.instrument, payload.date)
+    try:
+        return strategy.run_backtest(payload.instrument, payload.date)
+    except Exception as e:
+        logger.exception(f"Backtest failed for {payload.strategy}/{payload.instrument}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/strategy-hub/fetch/{strategy}")

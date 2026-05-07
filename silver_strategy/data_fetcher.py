@@ -138,7 +138,7 @@ def fetch_instrument_data(instrument: str) -> dict | None:
         "current": {
             "token":          curr_info["token"],
             "trading_symbol": curr_info["trading_symbol"],
-            "lot_size":       int(curr_info["lot_size"]),
+            "lot_size":       int(float(curr_info["lot_size"])),
             "candles":        mcx_candles_current,
         }
     }
@@ -151,7 +151,7 @@ def fetch_instrument_data(instrument: str) -> dict | None:
         result["next"] = {
             "token":          next_info["token"],
             "trading_symbol": next_info["trading_symbol"],
-            "lot_size":       int(next_info["lot_size"]),
+            "lot_size":       int(float(next_info["lot_size"])),
             "candles":        mcx_candles_next,
         }
 
