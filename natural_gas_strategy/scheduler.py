@@ -34,11 +34,13 @@ def _fetch_and_broadcast(broadcast=None):
                 logger.warning(f"No data for {inst}")
                 levels_map[inst] = None
                 continue
+            # fetch_instrument_data returns {"current": {...}, "next": {...}}
+            curr = data.get("current") or data
             gl = NaturalGasLevels(
                 instrument=inst,
-                trading_symbol=data["trading_symbol"],
-                token=data["token"],
-                raw_days=data["candles"],
+                trading_symbol=curr["trading_symbol"],
+                token=curr["token"],
+                raw_days=curr["candles"],
             )
             set_levels_from_natural_gas_levels(inst, gl)
             levels_map[inst] = gl.to_dict()

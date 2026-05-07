@@ -110,10 +110,12 @@ def fetch_instrument_data(instrument: str) -> dict | None:
     """
     Full pipeline: resolve token → fetch candles → return dict with levels data.
     Returns None on failure.
+    Note: OHLC data comes from MCX CSV. Angel One is only needed for LTP.
     """
+    # Angel One needed for token resolution (instrument master download)
+    # but OHLC data comes from MCX CSV — so we only warn, not abort.
     if not angel_api.is_connected():
-        logger.warning("Angel One not connected — cannot fetch data")
-        return None
+        logger.warning("Angel One not connected — token resolution may use cached master")
 
     tokens_info = _find_near_month_token(instrument)
     if not tokens_info or not tokens_info.get("current"):
