@@ -399,7 +399,7 @@ def _trigger_long(inst, ltp, lvl, state):
         return
     _set_state(inst, "long_state", "ACTIVE_P1")
     _set_state(inst, "long_entry_price", entry_price)
-    entry_dt = _now_ist().strftime("%d %b %H:%M")
+    entry_dt = _now_ist().isoformat()
     _set_state(inst, "long_entry_date", entry_dt)
     _recalculate_active_levels(_live[inst])
     live_lvl = _live[inst]["levels"]
@@ -416,7 +416,7 @@ def _trigger_short(inst, ltp, lvl, state):
         return
     _set_state(inst, "short_state", "ACTIVE_P1")
     _set_state(inst, "short_entry_price", entry_price)
-    entry_dt = _now_ist().strftime("%d %b %H:%M")
+    entry_dt = _now_ist().isoformat()
     _set_state(inst, "short_entry_date", entry_dt)
     _recalculate_active_levels(_live[inst])
     live_lvl = _live[inst]["levels"]
@@ -502,7 +502,7 @@ def _close_short(inst, ltp, reason, sl):
         lots=lots,
         lot_size=MULTIPLIERS.get(inst, 25),
         strategy=STRATEGY_NAME,
-        realized_lot1_pnl=realized_lot1,
+        realized_lot1_pnl=0, # Already logged separately
     )
 
 def _set_state(inst, key, val):

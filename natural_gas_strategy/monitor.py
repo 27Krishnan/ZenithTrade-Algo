@@ -450,7 +450,7 @@ def _monitor_tick():
         if long_st == "PENDING" and e_l and ltp >= e_l:
             entry_price = e_l
             long_st = "ACTIVE_P1"
-            entry_dt = _now_ist().strftime("%d %b %H:%M")
+            entry_dt = _now_ist().isoformat()
             _set_state(inst, "long_state", "ACTIVE_P1")
             _set_state(inst, "long_entry_price", entry_price)
             _set_state(inst, "long_entry_date", entry_dt)
@@ -466,7 +466,7 @@ def _monitor_tick():
         if short_st == "PENDING" and e_s and ltp <= e_s:
             entry_price = e_s
             short_st = "ACTIVE_P1"
-            entry_dt = _now_ist().strftime("%d %b %H:%M")
+            entry_dt = _now_ist().isoformat()
             _set_state(inst, "short_state", "ACTIVE_P1")
             _set_state(inst, "short_entry_price", entry_price)
             _set_state(inst, "short_entry_date", entry_dt)

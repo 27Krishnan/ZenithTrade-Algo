@@ -1,8 +1,9 @@
 """Force fetch today's OHLC data for GOLD and GOLDM from Angel One API."""
 import sys, os
-sys.path.insert(0, r'c:\Users\Admin\OneDrive\Swap Data\Papertrading')
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
 
-os.chdir(r'c:\Users\Admin\OneDrive\Swap Data\Papertrading')
+os.chdir(project_root)
 
 from gold_strategy.scheduler import fetch_now
 from loguru import logger
@@ -18,7 +19,8 @@ except Exception as e:
 
 # Now verify what got stored
 import sqlite3, json
-conn = sqlite3.connect(r'c:\Users\Admin\OneDrive\Swap Data\Papertrading\gold_strategy\gold_strategy.db')
+db_path = os.path.join(project_root, 'gold_strategy', 'gold_strategy.db')
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 for inst in ['GOLD', 'GOLDM']:

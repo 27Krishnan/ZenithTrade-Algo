@@ -165,17 +165,29 @@ class MarketScheduler:
             win_rate = (winning / total * 100) if total > 0 else 0
 
             report_text = (
-                f"\U0001F4CA Daily Report - {today_str}\n"
+                f"📊 Daily Report - {today_str}\n"
                 f"Total Trades: {total}\n"
                 f"Winning: {winning} | Losing: {losing}\n"
                 f"Win Rate: {win_rate:.1f}%\n"
-                f"Total P&L: \u20b9{total_pnl:,.2f}"
+                f"Total P&L: ₹{total_pnl:,.2f}"
             )
             logger.info(report_text)
 
+            # Save to database
+            report = DailyReport(
+                date=today_str,
+                total_trades=total,
+                winning_trades=winning,
+                losing_trades=losing,
+                win_rate=win_rate,
+                total_pnl=total_pnl,
+                strategy_breakdown=None # TBD
+            )
+            db.add(report)
+            db.commit()
+
             # from notifications.telegram_bot import telegram_bot
             # telegram_bot.send(report_text)
-            pass
         finally:
             db.close()
 
