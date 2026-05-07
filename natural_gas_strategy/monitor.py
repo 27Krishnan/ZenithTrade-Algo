@@ -288,6 +288,9 @@ def set_levels_from_natural_gas_levels(inst: str, gl: NaturalGasLevels):
                 d["sl2_short"]["sl"] = min(d["sl2_short"]["sl"], old_lvl["sl2_short"]["sl"])
                 d["sl2_short"]["b"] = min(d["sl2_short"]["b"], old_lvl["sl2_short"].get("b", 9999999))
 
+        if inst not in _live:
+            _live[inst] = {}
+            
         _live[inst].update({
             "instrument":       gl.instrument,
             "trading_symbol":   gl.trading_symbol,
