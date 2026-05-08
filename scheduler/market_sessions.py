@@ -84,10 +84,10 @@ class MarketScheduler:
             day_of_week="mon-fri", hour=23, minute=45,
             id="daily_report"
         )
-        # Morning login / reconnect
+        # Morning login / reconnect — 9:01 AM (strictly after 9:00 AM target checks)
         self.scheduler.add_job(
             self._morning_connect, "cron",
-            day_of_week="mon-fri", hour=9, minute=0,
+            day_of_week="mon-fri", hour=9, minute=1,
             id="morning_connect"
         )
         # Daily MCX Bhavcopy Fetch (8:30 AM IST)
