@@ -382,12 +382,12 @@ def start_scheduler():
     sched.add_job(_handle_gap_recovery, "cron", day_of_week="mon-fri", hour=9, minute=15, id="morning_gap")
 
     # Evening Session
-    sched.add_job(_place_target_orders, "cron", day_of_week="mon-fri", hour=17, minute=0, id="evening_target")
+    sched.add_job(_place_target_orders, "cron", day_of_week="mon-fri", hour=17, minute=1, id="evening_target")
     sched.add_job(_place_entry_and_sl_orders, "cron", day_of_week="mon-fri", hour=17, minute=10, id="evening_entry")
     sched.add_job(_handle_gap_recovery, "cron", day_of_week="mon-fri", hour=17, minute=15, id="evening_gap")
 
     sched.start()
-    logger.info("Silver Strategy scheduler started (Morning 9:00 | Evening 17:00 support)")
+    logger.info("Silver Strategy scheduler started (Morning 9:00 | Evening 17:01 support)")
     return sched
 
 def fetch_now(broadcast=None):
