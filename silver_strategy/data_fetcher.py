@@ -113,11 +113,11 @@ def _find_near_month_token(name: str, as_of_date: datetime | None = None) -> dic
 def fetch_instrument_data(instrument: str) -> dict | None:
     """
     Full pipeline: resolve tokens → fetch candles for BOTH contracts (if applicable) → return dict.
-    Returns None on failure.
+    Returns None on failure. Angel One connection is used for LTP only — CSV data loads regardless.
     """
     if not angel_api.is_connected():
-        logger.warning("Angel One not connected — cannot fetch data")
-        return None
+        logger.warning("Angel One not connected — token resolution may use cached master")
+        # Do NOT return None — CSV OHLC data does not need a live connection
 
     tokens_info = _find_near_month_token(instrument)
     if not tokens_info or not tokens_info.get("current"):
