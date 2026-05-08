@@ -150,38 +150,59 @@ class NiftyLevels:
 
 def fetch_and_calculate(instrument: str, trading_symbol: str, token: str):
     """
-    Fetches 2 days of historical data from NSE India and calculates levels.
+    Fetches 2 days of historical data from local NSE CSV database and calculates levels.
+    Dynamically picks the nearest future NIFTY expiry CSV from data/nse_ohlc/.
     """
-    from .nse_fetcher import nse_fetcher
+    from core.nse_data import get_nse_ohlc_from_csv
+    from datetime import datetime
+    from pathlib import Path
+    import os
     try:
-        # Determine current month's expiry or use a fixed one if provided
-        # For now, we follow the user's example for May 2026
-        expiry = "26-May-2026" 
-        
-        logger.info(f"Nifty Calculator: Fetching historical data from NSE for {expiry}")
-        nse_data = nse_fetcher.fetch_nifty_futures(expiry_date=expiry)
-        
-        if not nse_data or len(nse_data) < 2:
-            logger.error(f"Nifty Calculator: Not enough data from NSE for {expiry}")
+        # --- Dynamically find the nearest future expiry from CSV filenames ---
+        base_dir = Path(__file__).resolve().parent.parent
+        nse_ohlc_dir = base_dir / "data" / "nse_ohlc"
+        today = datetime.today().date()
+
+        best_expiry_dt = None
+        for fname in os.listdir(nse_ohlc_dir):
+            # Filename format: nifty_26may2026_ohlc.csv
+            if not fname.startswith("nifty_") or not fname.endswith("_ohlc.csv"):
+                continue
+            date_part = fname[len("nifty_"):-len("_ohlc.csv")]  # e.g. "26may2026"
+            try:
+                exp_dt = datetime.strptime(date_part, "%d%b%Y").date()
+            except ValueError:
+                continue
+            if exp_dt >= today:
+                if best_expiry_dt is None or exp_dt < best_expiry_dt:
+                    best_expiry_dt = exp_dt
+
+        if best_expiry_dt is None:
+            logger.error("Nifty Calculator: No valid future expiry CSV found in data/nse_ohlc/")
             return None
 
-        # NSE data is already sorted newest first
+        expiry_str = best_expiry_dt.strftime("%d-%b-%Y")
+        expiry_dt = datetime.combine(best_expiry_dt, datetime.min.time())
+        logger.info(f"Nifty Calculator: Auto-detected expiry = {expiry_str}")
+
+        # --- Load OHLC from CSV ---
+        logger.info(f"Nifty Calculator: Loading historical data from CSV for {expiry_str}")
+        nse_data = get_nse_ohlc_from_csv(instrument, n_days=10, expiry_date=expiry_dt)
+
+        if not nse_data or len(nse_data) < 2:
+            logger.error(f"Nifty Calculator: Not enough data in CSV for {expiry_str}")
+            return None
+
         # Take the last 2 COMPLETED days
-        raw_days = []
-        selected_dates = []
-        for row in nse_data[:2]:
-            raw_days.append({
-                "date": row['date'],
-                "high": float(row['high']),
-                "low":  float(row['low'])
-            })
-            selected_dates.append(row['date'])
-        
-        logger.info(f"Nifty Calculator (NSE Source): Selected Lookback Dates: {', '.join(selected_dates)}")
-            
+        raw_days = nse_data[:2]
+        selected_dates = [d["date"] for d in raw_days]
+
+        logger.info(f"Nifty Calculator (CSV Source): Selected Lookback Dates: {', '.join(selected_dates)}")
+
         lvls = NiftyLevels(instrument, trading_symbol, token, raw_days)
         return lvls.to_dict()
-        
+
     except Exception as e:
-        logger.error(f"Nifty Calculator NSE Error: {e}")
+        logger.error(f"Nifty Calculator CSV Error: {e}")
         return None
+
