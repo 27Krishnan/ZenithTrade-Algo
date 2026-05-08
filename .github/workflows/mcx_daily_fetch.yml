@@ -9,8 +9,8 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # 1:00 AM UTC = 6:30 AM IST (before cloud 7 AM fetch job)
-    - cron: '0 1 * * 1-5'  # Mon-Fri only
+    # 2:30 AM UTC = 8:00 AM IST (reliable off-peak slot; GCP pulls at 8:30 AM IST)
+    - cron: '30 2 * * 1-5'  # Mon-Fri only
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:

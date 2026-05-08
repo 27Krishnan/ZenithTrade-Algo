@@ -90,35 +90,51 @@ class MarketScheduler:
             day_of_week="mon-fri", hour=9, minute=0,
             id="morning_connect"
         )
-        # Daily MCX Bhavcopy Fetch (7:00 AM)
+        # Daily MCX Bhavcopy Fetch (8:30 AM IST)
+        # GitHub Actions runs at 8:00 AM IST (2:30 AM UTC) and takes ~5 min.
+        # 8:30 AM gives a comfortable 30-min buffer for GitHub to complete.
         self.scheduler.add_job(
             self._run_mcx_fetcher, "cron",
-            day_of_week="mon-fri", hour=7, minute=0,
+            day_of_week="mon-fri", hour=8, minute=30,
             id="mcx_fetcher"
         )
 
     def _run_mcx_fetcher(self):
-        """Pull latest MCX OHLC CSV data from GitHub (updated by GitHub Actions)."""
-        logger.info("Pulling daily MCX OHLC data from GitHub...")
+        """Pull latest MCX OHLC CSV data from GitHub (updated by GitHub Actions at 6:30 AM IST)."""
+        logger.info("[MCX Fetcher] Pulling daily MCX OHLC data from GitHub...")
         try:
             import subprocess
             import os
-            
+
             project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            result = subprocess.run(
-                ["git", "pull", "origin", "main"], 
-                cwd=project_dir, 
-                capture_output=True, 
-                text=True
+
+            # Step 1: fetch latest from origin
+            fetch_result = subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                timeout=60
             )
-            
-            if result.returncode == 0:
-                logger.info(f"MCX data pull successful: {result.stdout.strip()}")
+            if fetch_result.returncode != 0:
+                logger.error(f"[MCX Fetcher] git fetch failed: {fetch_result.stderr.strip()}")
+                return
+
+            # Step 2: hard reset to origin/main to avoid merge conflicts
+            reset_result = subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if reset_result.returncode == 0:
+                logger.info(f"[MCX Fetcher] Data pull successful: {reset_result.stdout.strip()}")
             else:
-                logger.error(f"MCX data pull failed: {result.stderr.strip()}")
-                
+                logger.error(f"[MCX Fetcher] git reset failed: {reset_result.stderr.strip()}")
+
         except Exception as e:
-            logger.error(f"Error pulling MCX data from GitHub: {e}")
+            logger.error(f"[MCX Fetcher] Error pulling MCX data from GitHub: {e}")
 
     def _morning_connect(self):
         from data.angel_api import angel_api
