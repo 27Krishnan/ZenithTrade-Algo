@@ -1,4 +1,4 @@
-"""
+"""gg
 MCX Actions Fetcher
 ===================
 Stable Selenium fetcher for MCX bhavcopy that works both locally and in
@@ -437,6 +437,12 @@ def _strip_internal_fields(rows: list[dict]) -> list[dict]:
         )
     return cleaned
 
+def _most_recent_trading_day() -> date:
+        candidate = date.today() - timedelta(days=1)
+        while candidate.weekday() >= 5:
+                    candidate -= timedelta(days=1)
+                return candidate
+
 
 def _fetch_one(
     driver: webdriver.Chrome,
@@ -444,7 +450,7 @@ def _fetch_one(
     csv_key: str,
     force_days: int,
 ) -> list[CommodityRun]:
-    to_day = date.today() - timedelta(days=1)
+        to_day = _most_recent_trading_day()
     
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = DEBUG_ROOT / f"{csv_key}_{stamp}"
