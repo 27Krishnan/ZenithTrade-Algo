@@ -37,11 +37,11 @@ jobs:
 
       - name: Install Chrome
         run: |
-          sudo install -m 0755 -d /etc/apt/keyrings
-          wget -q -O /etc/apt/keyrings/google-chrome.asc https://dl.google.com/linux/linux_signing_key.pub
+                    sudo install -m 0755 -d /etc/apt/keyrings
+                    wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo tee /etc/apt/keyrings/google-chrome.asc > /dev/null
 
           sudo chmod a+r /etc/apt/keyrings/google-chrome.asc
-          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+                    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y google-chrome-stable
           google-chrome --version
