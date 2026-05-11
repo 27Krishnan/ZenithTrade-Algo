@@ -339,6 +339,10 @@ def _update_trailing_sl1(inst: str, state: dict, direction: str, auto: bool):
 def start_scheduler():
     sched = BackgroundScheduler(timezone=IST)
     
+    # 0. Sync from GitHub - 08:00 AM (Mon-Fri)
+    from core.utils import auto_pull_latest
+    sched.add_job(auto_pull_latest, "cron", day_of_week="mon-fri", hour=8, minute=0, args=["Gold"], id="auto_pull")
+
     # 1. Fetch Data - 08:05 AM (Mon-Fri)
     sched.add_job(_fetch_and_broadcast, "cron", day_of_week="mon-fri", hour=8, minute=5, args=[False], id="morning_fetch")
     
