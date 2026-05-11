@@ -9,9 +9,9 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # 2:30 AM UTC = 8:00 AM IST (reliable off-peak slot; GCP pulls at 8:30 AM IST)
-    - cron: '30 2 * * 1-5'  # Mon-Fri only
-  workflow_dispatch:  # Allow manual trigger from GitHub UI
+    - cron: '20 3 * * 1-5'
+    - cron: '30 4 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   fetch-mcx-data:
@@ -37,10 +37,14 @@ jobs:
 
       - name: Install Chrome
         run: |
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google.list
+          sudo install -m 0755 -d /etc/apt/keyrings
+          wget -q -O /etc/apt/keyrings/google-chrome.asc https://dl.google.com/linux/linux_signing_key.pub
+
+          sudo chmod a+r /etc/apt/keyrings/google-chrome.asc
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update -qq
           sudo apt-get install -y google-chrome-stable
+          google-chrome --version
 
       - name: Fetch MCX OHLC data
         run: |
@@ -55,13 +59,14 @@ jobs:
       - name: Check if data was updated
         id: check_changes
         run: |
-          git diff --quiet data/mcx_ohlc/ data/nse_ohlc/ || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet data/mcx_ohlc/ data/nse_ohlc/ || echo "changed=true" >>$GITHUB_OUTPUT
 
       - name: Commit and push updated CSV files
         if: steps.check_changes.outputs.changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "Market Data Bot"
+
           git add data/mcx_ohlc/*.csv
           git add data/nse_ohlc/*.csv
           git commit -m "auto: MCX & NSE data update $(date +'%Y-%m-%d')"
@@ -71,8 +76,8 @@ jobs:
 
       - name: Summary
         run: |
-          echo "### MCX & NSE Data Fetch Complete" >> $GITHUB_STEP_SUMMARY
-          echo "Date: $(date +'%Y-%m-%d %H:%M IST')" >> $GITHUB_STEP_SUMMARY
-          echo "Files updated:" >> $GITHUB_STEP_SUMMARY
-          ls -la data/mcx_ohlc/*.csv >> $GITHUB_STEP_SUMMARY
-          ls -la data/nse_ohlc/*.csv >> $GITHUB_STEP_SUMMARY
+          echo "### MCX & NSE Data Fetch Complete" >>$GITHUB_STEP_SUMMARY
+          echo "Date: $(date +'%Y-%m-%d %H:%M IST')" >>$GITHUB_STEP_SUMMARY
+          echo "Files updated:" >>$GITHUB_STEP_SUMMARY
+          ls -la data/mcx_ohlc/*.csv >>$GITHUB_STEP_SUMMARY
+          ls -la data/nse_ohlc/*.csv >>$GITHUB_STEP_SUMMARY
