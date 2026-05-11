@@ -437,11 +437,17 @@ def _strip_internal_fields(rows: list[dict]) -> list[dict]:
         )
     return cleaned
 
+
 def _most_recent_trading_day() -> date:
-        candidate = date.today() - timedelta(days=1)
-        while candidate.weekday() >= 5:
-                    candidate -= timedelta(days=1)
-                return candidate
+    """Return the most recent completed weekday (Mon-Fri), skipping weekends.
+    
+    Fixes the Monday problem: when Action runs on Monday, yesterday is Sunday 
+    (no data). We need Friday's data instead.
+    """
+    candidate = date.today() - timedelta(days=1)
+    while candidate.weekday() >= 5:  # 5=Sat, 6=Sun
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 def _fetch_one(
@@ -450,7 +456,7 @@ def _fetch_one(
     csv_key: str,
     force_days: int,
 ) -> list[CommodityRun]:
-        to_day = _most_recent_trading_day()
+    to_day = _most_recent_trading_day()  # FIX: Skip weekends — Mon→Fri, normal days→yesterday
     
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = DEBUG_ROOT / f"{csv_key}_{stamp}"

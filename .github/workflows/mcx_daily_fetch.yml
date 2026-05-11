@@ -9,9 +9,11 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    - cron: '20 3 * * 1-5'
-    - cron: '30 4 * * 1-5'
-  workflow_dispatch:
+    # PRIMARY: 3:20 AM UTC = 8:50 AM IST (reliable off-peak; avoids 8:00 AM GitHub rush)
+    - cron: '20 3 * * 1-5'  # Mon-Fri only
+    # BACKUP: 4:30 AM UTC = 10:00 AM IST (catches any skipped primary runs)
+    - cron: '30 4 * * 1-5'  # Mon-Fri backup
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:
   fetch-mcx-data:
@@ -37,11 +39,11 @@ jobs:
 
       - name: Install Chrome
         run: |
-                    sudo install -m 0755 -d /etc/apt/keyrings
-                    wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo tee /etc/apt/keyrings/google-chrome.asc > /dev/null
-
+          # Modern method — no deprecated apt-key
+          sudo install -m 0755 -d /etc/apt/keyrings
+          wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo tee /etc/apt/keyrings/google-chrome.asc > /dev/null
           sudo chmod a+r /etc/apt/keyrings/google-chrome.asc
-                    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y google-chrome-stable
           google-chrome --version
@@ -49,6 +51,7 @@ jobs:
       - name: Fetch MCX OHLC data
         run: |
           python mcx_bhavcopy/mcx_actions_fetcher.py 0
+          echo "MCX_STATUS=$?" >> $GITHUB_ENV
         env:
           MCX_FETCH_DAYS: '0'
 
