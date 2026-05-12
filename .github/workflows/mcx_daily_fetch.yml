@@ -9,11 +9,12 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # PRIMARY: 3:30 AM UTC = 9:00 AM IST
-    # MCX publishes Friday bhavcopy on Monday morning — 9:00 AM ensures it's available.
-    - cron: '30 3 * * 1-5'  # Mon-Fri only
-    # BACKUP: 5:00 AM UTC = 10:30 AM IST
-    - cron: '0 5 * * 1-5'   # Mon-Fri backup
+    # PRIMARY: 1:00 AM UTC = 6:30 AM IST
+    # MCX Bhavcopy is available from previous evening.
+    # Fetching at 6:30 AM ensures data is ready well before 8:00 AM briefing.
+    - cron: '0 1 * * 1-5'  # Mon-Fri only
+    # BACKUP: 2:30 AM UTC = 8:00 AM IST (if primary fails)
+    - cron: '30 2 * * 1-5'  # Mon-Fri backup
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:
