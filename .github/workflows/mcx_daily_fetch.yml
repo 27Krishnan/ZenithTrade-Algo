@@ -9,8 +9,8 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # PRIMARY: 2:00 AM UTC = 7:30 AM IST (Ensures data is on GitHub before morning briefing)
-    - cron: '0 2 * * 1-5'  # Mon-Fri only
+    # PRIMARY: 2:10 AM UTC = 7:40 AM IST (Avoids the 2:00 AM high-load rush)
+    - cron: '10 2 * * 1-5'  # Mon-Fri only
     # BACKUP: 4:30 AM UTC = 10:00 AM IST (Catches any skipped primary runs)
     - cron: '30 4 * * 1-5'  # Mon-Fri backup
   workflow_dispatch:  # Allow manual trigger from GitHub UI
