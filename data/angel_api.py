@@ -59,21 +59,32 @@ class AngelOneAPI:
                     # Quick LTP check to verify session is still alive
                     result = self.api.ltpData("NSE", "Nifty 50", "99926000")
                     if result and result.get("status"):
-                        self._heartbeat_failures = 0
+                        self._heartbeat_failures = 0  # Reset on success
                     else:
-                        self._heartbeat_failures += 1
-                        logger.warning(
-                            f"Angel heartbeat failed ({self._heartbeat_failures}/3)"
-                        )
-                    if self._heartbeat_failures >= 3:
-                        logger.warning("Angel heartbeat failed repeatedly, attempting reconnect...")
+                        msg = str(result.get("message", "") if result else "")
+                        # Rate limit is NOT a real disconnect — skip counting
+                        if "Access denied" in msg or "rate" in msg.lower():
+                            logger.debug("Angel heartbeat: rate limited, not counting as failure")
+                        else:
+                            self._heartbeat_failures += 1
+                            logger.warning(
+                                f"Angel heartbeat failed ({self._heartbeat_failures}/5)"
+                            )
+                    # Only attempt reconnect after 5 consecutive real failures
+                    if self._heartbeat_failures >= 5:
+                        logger.warning("Angel heartbeat failed 5x, attempting reconnect...")
                         self._try_reconnect()
             except Exception as e:
-                self._heartbeat_failures += 1
-                logger.debug(f"Heartbeat error ({self._heartbeat_failures}/3): {e}")
-                if self._heartbeat_failures >= 3:
-                    logger.warning("Angel heartbeat errors repeated, attempting reconnect...")
-                    self._try_reconnect()
+                err_str = str(e)
+                # Rate limit exceptions are not real disconnects
+                if "Access denied" in err_str or "rate" in err_str.lower():
+                    logger.debug(f"Heartbeat rate limit (not counted): {e}")
+                else:
+                    self._heartbeat_failures += 1
+                    logger.debug(f"Heartbeat error ({self._heartbeat_failures}/5): {e}")
+                    if self._heartbeat_failures >= 5:
+                        logger.warning("Angel heartbeat errors repeated, attempting reconnect...")
+                        self._try_reconnect()
 
             time.sleep(60)
 
@@ -82,7 +93,7 @@ class AngelOneAPI:
         return self._connected
 
     def _try_reconnect(self) -> bool:
-        """Reconnect with exponential backoff"""
+        """Reconnect with exponential backoff — does NOT set _connected=False during attempts."""
 
         for attempt in range(3):
             try:
@@ -115,8 +126,11 @@ class AngelOneAPI:
                 logger.warning(f"Reconnect attempt {attempt + 1} error: {e}")
 
             time.sleep(2**attempt)  # 2, 4, 8 seconds
+
+        # Only mark disconnected if ALL attempts failed
         self._connected = False
-        logger.error("All reconnect attempts failed")
+        self._heartbeat_failures = 0  # Reset so next heartbeat tries fresh
+        logger.error("All reconnect attempts failed — marked as disconnected")
         return False
 
     def get_ltp(self, exchange: str, symbol: str, token: str) -> float | None:
