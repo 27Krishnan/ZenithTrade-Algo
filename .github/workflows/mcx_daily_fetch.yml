@@ -78,6 +78,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Notify GCP Server to auto-pull new data
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          echo "Notifying GCP server to pull latest data..."
+          curl -s -X POST "http://34.70.33.149:8000/api/webhook/data-updated" \
+            -H "Content-Type: application/json" \
+            --max-time 10 \
+            || echo "Server notification failed (server may be restarting) — data is on GitHub"
+
       - name: Summary
         run: |
           echo "### MCX & NSE Data Fetch Complete" >>$GITHUB_STEP_SUMMARY

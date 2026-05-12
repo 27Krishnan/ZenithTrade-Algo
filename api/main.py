@@ -846,6 +846,51 @@ async def system_status():
     }
 
 
+@app.post("/api/webhook/data-updated")
+async def data_updated_webhook(request: Request):
+    """
+    Called by GitHub Action after new CSV data is pushed.
+    Triggers: git pull → strategy data refresh → levels recalculate.
+    This closes the gap between GitHub push and GCP server update.
+    """
+    import subprocess
+    import threading
+
+    def _pull_and_refresh():
+        try:
+            logger.info("Webhook: GitHub notified data update — running git pull...")
+            result = subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd="/home/charmkrish/ZenithTrade-Algo",
+                capture_output=True, text=True, timeout=60
+            )
+            if result.returncode == 0:
+                logger.info(f"Webhook: git pull success: {result.stdout.strip()}")
+            else:
+                logger.error(f"Webhook: git pull failed: {result.stderr.strip()}")
+                return
+
+            # Trigger data refresh on all strategies
+            logger.info("Webhook: Triggering strategy data refresh...")
+            from core.strategy_registry import strategy_registry
+            for strategy in strategy_registry.list():
+                try:
+                    strategy.fetch_now()
+                    logger.info(f"Webhook: Refreshed {strategy.name}")
+                except Exception as e:
+                    logger.error(f"Webhook: Failed to refresh {strategy.name}: {e}")
+
+            logger.info("Webhook: All strategies refreshed successfully.")
+        except Exception as e:
+            logger.error(f"Webhook: Error during pull and refresh: {e}")
+
+    # Run in background so webhook returns immediately
+    thread = threading.Thread(target=_pull_and_refresh, daemon=True)
+    thread.start()
+
+    return {"success": True, "message": "Git pull and refresh triggered in background"}
+
+
 @app.get("/api/health")
 async def health_check():
     """
