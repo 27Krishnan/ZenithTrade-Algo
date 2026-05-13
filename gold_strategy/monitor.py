@@ -42,6 +42,7 @@ STRATEGY_NAME = "GOLD • MathZing"
 
 _live: dict = {inst: {} for inst in INSTRUMENTS}
 _lock = threading.Lock()
+_first_tick: dict = {inst: True for inst in INSTRUMENTS}  # Track first LTP tick per instrument
 
 
 def _now_ist():
@@ -435,6 +436,39 @@ def _monitor_tick():
             if not morning_processed:
                 _set_state(inst, "morning_processed", True)
                 logger.info(f"{inst}: Morning session marked as PROCESSED.")
+
+        # ── POST-STARTUP GAP CHECK (runs only on first LTP tick after app restart) ──
+        # If app restarted during/after gap window and LTP is already beyond entry level,
+        # mark as GAP to prevent entering at a stale pre-market level.
+        if _first_tick.get(inst, True):
+            _first_tick[inst] = False
+            if ts > "09:10:00" and ts < "17:00:00":  # Only during market hours
+                if long_st == "PENDING" and e_l and ltp > e_l:
+                    logger.warning(
+                        f"{inst}: POST-STARTUP GAP detected. LTP={ltp} already ABOVE E_L={e_l}. "
+                        "Marking as GAP to prevent wrong entry after restart."
+                    )
+                    _set_state(inst, "long_state", "GAP")
+                    long_st = "GAP"
+                    tg.send_msg(
+                        f"⚡ *{inst} Startup GAP Detected*\n"
+                        f"App restarted during market hours.\n"
+                        f"LTP *{ltp}* already above E_L *{e_l}*.\n"
+                        f"Marked as GAP — manual review needed."
+                    )
+                if short_st == "PENDING" and e_s and ltp < e_s:
+                    logger.warning(
+                        f"{inst}: POST-STARTUP GAP detected. LTP={ltp} already BELOW E_S={e_s}. "
+                        "Marking as GAP to prevent wrong entry after restart."
+                    )
+                    _set_state(inst, "short_state", "GAP")
+                    short_st = "GAP"
+                    tg.send_msg(
+                        f"⚡ *{inst} Startup GAP Detected*\n"
+                        f"App restarted during market hours.\n"
+                        f"LTP *{ltp}* already below E_S *{e_s}*.\n"
+                        f"Marked as GAP — manual review needed."
+                    )
 
         # ── Gap Monitoring: 9:00 – 9:10 AM ───────────────────────────
         if "09:00:00" <= ts < "09:10:00":
