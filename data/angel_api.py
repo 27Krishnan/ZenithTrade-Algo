@@ -14,9 +14,11 @@ class AngelOneAPI:
         self.feed_token = None
         self._connected = False
         self._monitoring = False
+        self._refreshing = False
         self._heartbeat_failures = 0
         self._ltp_cache = {}  # (exchange, token) -> (ltp, timestamp)
         self._cache_lock = threading.Lock()
+        self._last_connect_time = None
 
     def connect(self) -> bool:
         try:
@@ -30,8 +32,10 @@ class AngelOneAPI:
                 self.feed_token = self.api.getfeedToken()
                 self._connected = True
                 self._heartbeat_failures = 0
+                self._last_connect_time = time.time()
                 logger.info(f"Angel One connected | Client: {settings.ANGEL_CLIENT_ID}")
                 self.start_heartbeat()
+                self._start_token_refresh()
                 return True
             else:
                 logger.error(f"Angel One login failed: {data['message']}")
@@ -45,12 +49,48 @@ class AngelOneAPI:
         if self._monitoring:
             return
         self._monitoring = True
-
         t = threading.Thread(
             target=self._heartbeat_loop, daemon=True, name="AngelHeartbeat"
         )
         t.start()
         logger.info("Angel One heartbeat monitor started")
+
+    def _start_token_refresh(self):
+        """Proactively refresh JWT token every 55 min to prevent expiry-based disconnects."""
+        if self._refreshing:
+            return
+        self._refreshing = True
+        t = threading.Thread(
+            target=self._token_refresh_loop, daemon=True, name="AngelTokenRefresh"
+        )
+        t.start()
+        logger.info("Angel One token auto-refresh started (every 55 min)")
+
+    def _token_refresh_loop(self):
+        """Silently refreshes Angel One JWT every 55 minutes without UI disconnect flicker."""
+        while self._refreshing:
+            time.sleep(55 * 60)  # Wait 55 minutes
+            if not self._connected:
+                continue
+            try:
+                logger.info("Angel One: Proactive token refresh...")
+                new_api = SmartConnect(api_key=settings.ANGEL_API_KEY)
+                totp = pyotp.TOTP(settings.ANGEL_TOTP_SECRET).now()
+                data = new_api.generateSession(
+                    settings.ANGEL_CLIENT_ID, settings.ANGEL_PASSWORD, totp
+                )
+                if data["status"]:
+                    self.api = new_api
+                    self.auth_token = data["data"]["jwtToken"]
+                    self.feed_token = new_api.getfeedToken()
+                    self._heartbeat_failures = 0
+                    self._last_connect_time = time.time()
+                    # _connected stays True — no UI flicker
+                    logger.info("Angel One: Token refreshed silently ✓")
+                else:
+                    logger.warning(f"Angel One: Token refresh failed: {data.get('message')}")
+            except Exception as e:
+                logger.warning(f"Angel One: Token refresh error: {e}")
 
     def _heartbeat_loop(self):
         while self._monitoring:
