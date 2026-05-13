@@ -43,6 +43,9 @@ STRATEGY_NAME = "GOLD • MathZing"
 _live: dict = {inst: {} for inst in INSTRUMENTS}
 _lock = threading.Lock()
 _first_tick: dict = {inst: True for inst in INSTRUMENTS}  # Track first LTP tick per instrument
+_gap_high: dict = {inst: 0.0 for inst in INSTRUMENTS}      # Track high during 9:00-9:10 gap window
+_gap_low:  dict = {inst: 999999.0 for inst in INSTRUMENTS} # Track low during 9:00-9:10 gap window
+_gap_window_active: dict = {inst: False for inst in INSTRUMENTS}  # True while in 9:00-9:10 window
 
 
 def _now_ist():
@@ -472,6 +475,11 @@ def _monitor_tick():
 
         # ── Gap Monitoring: 9:00 – 9:10 AM ───────────────────────────
         if "09:00:00" <= ts < "09:10:00":
+            # Track high/low during gap window for use in 9:15 recovery
+            _gap_high[inst] = max(_gap_high[inst], ltp)
+            _gap_low[inst]  = min(_gap_low[inst],  ltp)
+            _gap_window_active[inst] = True
+
             if long_st == "PENDING" and e_l and ltp >= e_l:
                 _set_state(inst, "long_state", "GAP")
                 logger.warning(f"{inst}: GAP UP detected at {ltp} (E_L={e_l})")
@@ -624,10 +632,11 @@ def _set_state(inst: str, key: str, val):
 
 def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
     """
-    Rule: At 9:15 AM, if price has gapped beyond SL, reset SL instead of exiting.
-    Buffer: 0.12% for Gold.
+    Rule at 9:15 AM:
+    1. If long/short state is ACTIVE and SL was breached during gap → Reset SL
+    2. If long/short state is GAP → GAP RECOVERY: Calculate new entry from 15-min high/low
+       (Matches backtester: new_e_l = gap_high × 1.0012, reset to PENDING with new levels)
     """
-    # Only run once per day
     today = _now_ist().date().isoformat()
     last_reset = state.get("last_sl_reset_date")
     if last_reset == today:
@@ -636,21 +645,101 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
     lvl = state.get("levels", {})
     changed = False
     
-    # 1. Fetch the 09:00-09:15 range from Angel One
+    # Fetch the 09:00-09:15 candle range from Angel One
     try:
         from data.angel_api import angel_api
         now = _now_ist()
         from_t = now.strftime("%Y-%m-%d 09:00")
         to_t   = now.strftime("%Y-%m-%d 09:15")
         candles = angel_api.get_candle_data(state["token"], "MCX", "FIVE_MINUTE", from_t, to_t)
-        if not candles: return
         
-        m15_high = max(float(c[2]) for c in candles)
-        m15_low  = min(float(c[3]) for c in candles)
-        
+        # Fallback: Use in-memory tracked values if candle fetch fails
+        if candles:
+            m15_high = max(float(c[2]) for c in candles)
+            m15_low  = min(float(c[3]) for c in candles)
+        else:
+            m15_high = _gap_high.get(inst, 0)
+            m15_low  = _gap_low.get(inst, 999999)
+            if m15_high == 0 or m15_low == 999999:
+                logger.warning(f"{inst}: Cannot do 9:15 reset — no candles and no tracked gap range")
+                return
+            logger.info(f"{inst}: Using in-memory gap range: high={m15_high}, low={m15_low}")
+
         from .calculator import rt
 
-        # Check SHORT SL breach
+        # ── CASE 1: GAP RECOVERY ──────────────────────────────────────────────────
+        # Matches backtester exactly: new entry = gap_high * 1.0012 for LONG GAP
+        if state["long_state"] == "GAP":
+            new_e_l  = rt(m15_high * 1.0012)
+            new_t_l  = rt(new_e_l * 1.015)
+            sl1_a    = rt(new_e_l * 0.985)
+            sl1_b    = lvl.get("sl1_long", {}).get("b", 0)
+            new_sl1_l = max(sl1_a, sl1_b)
+            sl2_a    = rt(new_e_l * 0.985)
+            sl2_b    = lvl.get("sl2_long", {}).get("b", 0)
+            new_sl2_l = max(sl2_a, sl2_b)
+
+            lvl["e_l"] = new_e_l
+            lvl["t_l"] = new_t_l
+            if "sl1_long" in lvl:
+                lvl["sl1_long"]["a"] = sl1_a
+                lvl["sl1_long"]["sl"] = new_sl1_l
+            if "sl2_long" in lvl:
+                lvl["sl2_long"]["a"] = sl2_a
+                lvl["sl2_long"]["sl"] = new_sl2_l
+
+            _set_state(inst, "levels", lvl)
+            _set_state(inst, "long_state", "PENDING")  # Reset to PENDING with NEW entry
+            changed = True
+            logger.info(
+                f"{inst}: GAP RECOVERY (LONG) at 9:15 — "
+                f"New E_L={new_e_l} | T_L={new_t_l} | SL1={new_sl1_l} "
+                f"(15-min high={m15_high})"
+            )
+            tg.send_msg(
+                f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
+                f"15-min High: *{m15_high}*\n"
+                f"New Long Entry: *{new_e_l}* (High × 1.0012)\n"
+                f"Target: *{new_t_l}* | SL1: *{new_sl1_l}*\n"
+                f"Status → PENDING (waiting for entry trigger)"
+            )
+
+        if state["short_state"] == "GAP":
+            new_e_s  = rt(m15_low * 0.9988)
+            new_t_s  = rt(new_e_s * 0.985)
+            sl1_a    = rt(new_e_s * 1.015)
+            sl1_b    = lvl.get("sl1_short", {}).get("b", 9999999)
+            new_sl1_s = min(sl1_a, sl1_b)
+            sl2_a    = rt(new_e_s * 1.015)
+            sl2_b    = lvl.get("sl2_short", {}).get("b", 9999999)
+            new_sl2_s = min(sl2_a, sl2_b)
+
+            lvl["e_s"] = new_e_s
+            lvl["t_s"] = new_t_s
+            if "sl1_short" in lvl:
+                lvl["sl1_short"]["a"] = sl1_a
+                lvl["sl1_short"]["sl"] = new_sl1_s
+            if "sl2_short" in lvl:
+                lvl["sl2_short"]["a"] = sl2_a
+                lvl["sl2_short"]["sl"] = new_sl2_s
+
+            _set_state(inst, "levels", lvl)
+            _set_state(inst, "short_state", "PENDING")  # Reset to PENDING with NEW entry
+            changed = True
+            logger.info(
+                f"{inst}: GAP RECOVERY (SHORT) at 9:15 — "
+                f"New E_S={new_e_s} | T_S={new_t_s} | SL1={new_sl1_s} "
+                f"(15-min low={m15_low})"
+            )
+            tg.send_msg(
+                f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
+                f"15-min Low: *{m15_low}*\n"
+                f"New Short Entry: *{new_e_s}* (Low × 0.9988)\n"
+                f"Target: *{new_t_s}* | SL1: *{new_sl1_s}*\n"
+                f"Status → PENDING (waiting for entry trigger)"
+            )
+
+        # ── CASE 2: SL RESET for ACTIVE positions (existing logic) ──────────────────
         if state["short_state"] in ("ACTIVE_P1", "ACTIVE_P2"):
             sl_key = "sl1_short" if state["short_state"] == "ACTIVE_P1" else "sl2_short"
             curr_sl = lvl.get(sl_key, {}).get("sl", 0)
@@ -662,7 +751,6 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
                 logger.info(f"{inst}: SHORT SL Gap Reset at 9:15. New SL: {new_sl} (based on 15m high {m15_high})")
                 tg.send_msg(f"🔔 *{inst} SL RESET (9:15 AM)*\nShort SL was breached by gap. New Trailing SL set at *{new_sl}* (High + 0.12%)")
 
-        # Check LONG SL breach
         if state["long_state"] in ("ACTIVE_P1", "ACTIVE_P2"):
             sl_key = "sl1_long" if state["long_state"] == "ACTIVE_P1" else "sl2_long"
             curr_sl = lvl.get(sl_key, {}).get("sl", 0)
@@ -679,6 +767,11 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             _set_state(inst, "levels", lvl)
             _set_state(inst, "last_sl_reset_date", today)
             upsert_state(inst, {"levels_json": json.dumps(lvl)})
+
+            # Reset gap tracking for this instrument
+            _gap_high[inst] = 0.0
+            _gap_low[inst]  = 999999.0
+            _gap_window_active[inst] = False
             
     except Exception as e:
         logger.error(f"Error in 9:15 SL reset for {inst}: {e}")
