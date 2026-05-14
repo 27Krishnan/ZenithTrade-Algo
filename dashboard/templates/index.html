@@ -2693,6 +2693,7 @@ async function executeBasket() {
 function clearBasket() { if (!_basket.length || confirm('Clear basket?')) { _basket=[]; renderBasketBar(); } }
 
 let _totalRealizedPnl = 0;
+let _liveMonitorSeq = 0;
 function updateTotalCard(unrealized) {
   const total = _totalRealizedPnl + unrealized;
   setCard('card-unrealized', fmt(unrealized), unrealized >= 0 ? 'yellow' : 'red');
@@ -2718,8 +2719,11 @@ async function refreshLiveMonitor() {
   const briefingBody = document.getElementById('live-briefing-body');
   const timeBadge = document.getElementById('live-update-time');
   if(!grid) return;
+  const seq = ++_liveMonitorSeq;
   try {
-    const res = await fetch('/api/strategy-hub/overview');
+    const res = await fetch('/api/strategy-hub/overview?ts=' + Date.now(), { cache: 'no-store' });
+    if (seq !== _liveMonitorSeq) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     console.log('Strategy Hub Data:', data);
     timeBadge.textContent = 'Last sync: ' + new Date().toLocaleTimeString();
@@ -2753,8 +2757,12 @@ async function refreshLiveMonitor() {
         const isShortGap = shortState === 'GAP';
         const hasGap = isLongGap || isShortGap;
 
-        // Simple today check (e.g., "27 Apr")
-        const todayStr = new Date().getDate() + ' ' + new Intl.DateTimeFormat('en', { month: 'short' }).format(new Date());
+        const isEntryToday = (iso) => {
+          if (!iso) return false;
+          const entryDate = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+          const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+          return entryDate === todayDate;
+        };
         
         let rowStatusHtml = '';
         let displayLongEntry = fmt(levels.e_l);
@@ -2782,12 +2790,12 @@ async function refreshLiveMonitor() {
         </svg>`;
 
         if (isLongActive) {
-          const isToday = state.long_entry_date && state.long_entry_date.includes(todayStr);
+          const isToday = isEntryToday(state.long_entry_date);
           rowStatusHtml = `<span style="background:${isToday?'#00e676':'#a78bfa'}; color:#000; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900;">${isToday?'ACTIVE':'HOLDING'}</span>`;
           displayLongEntry = '--'; // Hide triggered entry
           displayShortEntry = fmt(levels.e_s); // Show opposite entry
         } else if (isShortActive) {
-          const isToday = state.short_entry_date && state.short_entry_date.includes(todayStr);
+          const isToday = isEntryToday(state.short_entry_date);
           rowStatusHtml = `<span style="background:${isToday?'#ff4d6d':'#a78bfa'}; color:#000; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900;">${isToday?'ACTIVE':'HOLDING'}</span>`;
           displayShortEntry = '--'; // Hide triggered entry
           displayLongEntry = fmt(levels.e_l); // Show opposite entry
