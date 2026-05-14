@@ -232,7 +232,7 @@ def _recalculate_active_levels(state: dict):
                 lvl["sl1_long"]["a"] = rt(ep * 0.985)
                 lvl["sl1_long"]["sl"] = max(lvl["sl1_long"]["a"], lvl["sl1_long"].get("b", 0))
             if "sl2_long" in lvl:
-                lvl["sl2_long"]["a"] = ep  # Phase 2 SL to Cost
+                lvl["sl2_long"]["a"] = rt(ep * 0.985)  # Phase 2 SL: entry - 1.5% (NOT cost itself)
                 fresh_sl = max(lvl["sl2_long"]["a"], lvl["sl2_long"].get("b", 0))
                 if long_st == "ACTIVE_P2":
                     # Ratchet: sl2 can only move UP (more favorable for long)
@@ -251,7 +251,7 @@ def _recalculate_active_levels(state: dict):
                 lvl["sl1_short"]["a"] = rt(ep * 1.015)
                 lvl["sl1_short"]["sl"] = min(lvl["sl1_short"]["a"], lvl["sl1_short"].get("b", 9999999))
             if "sl2_short" in lvl:
-                lvl["sl2_short"]["a"] = ep  # Phase 2 SL to Cost
+                lvl["sl2_short"]["a"] = rt(ep * 1.015)  # Phase 2 SL: entry + 1.5% (NOT cost itself)
                 fresh_sl = min(lvl["sl2_short"]["a"], lvl["sl2_short"].get("b", 9999999))
                 if short_st == "ACTIVE_P2":
                     # Ratchet: sl2 can only move DOWN (more favorable for short)
