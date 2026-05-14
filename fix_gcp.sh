@@ -142,13 +142,13 @@ elif [ -n "$APP_PID" ]; then
     sleep 2
     cd "$APP_DIR"
     source venv/bin/activate 2>/dev/null
-    nohup uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 > /dev/null 2>&1 &
+    nohup uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 > /dev/null 2>&1 &
     echo -e "${GREEN}  -> Restarted manually (new PID: $!)${NC}"
 else
     echo -e "${YELLOW}  -> Starting app fresh...${NC}"
     cd "$APP_DIR"
     source venv/bin/activate 2>/dev/null
-    nohup uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 > /dev/null 2>&1 &
+    nohup uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 > /dev/null 2>&1 &
     echo -e "${GREEN}  -> Started (PID: $!)${NC}"
 fi
 

@@ -60,7 +60,7 @@ Type=simple
 User=debian
 WorkingDirectory=/home/debian/PaperTrading
 Environment="PATH=/home/debian/PaperTrading/venv/bin"
-ExecStart=/home/debian/PaperTrading/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+ExecStart=/home/debian/PaperTrading/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 Restart=always
 RestartSec=10
 StandardOutput=append:/home/debian/PaperTrading/logs/papertrading.log
