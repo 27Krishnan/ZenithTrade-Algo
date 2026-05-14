@@ -111,9 +111,10 @@ class BasketPayload(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):
-    # Get last 50 trades total for the history table
+    # Fetch explicitly open trades first, regardless of creation date
+    open_trades = db.query(Trade).filter(Trade.status.in_([TradeStatus.OPEN, TradeStatus.PENDING])).all()
+    # Get last 50 closed trades for history table
     all_trades = db.query(Trade).order_by(Trade.created_at.desc()).limit(50).all()
-    open_trades = [t for t in all_trades if t.status in [TradeStatus.OPEN, TradeStatus.PENDING]]
     
     # Get ALL trades closed today for summary cards
     now_ist = get_now_ist()
