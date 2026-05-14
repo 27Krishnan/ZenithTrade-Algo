@@ -55,6 +55,31 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Angel One credentials not configured - running in demo mode")
 
+    def _angel_retry_loop():
+        if not (settings.ANGEL_CLIENT_ID and settings.ANGEL_API_KEY):
+            return
+        import time
+        for attempt in range(1, 11):
+            if angel_api.is_connected():
+                return
+            wait_seconds = min(30, attempt * 3)
+            logger.info(f"Angel One retry scheduled in {wait_seconds}s (attempt {attempt}/10)")
+            time.sleep(wait_seconds)
+            if angel_api.reconnect():
+                logger.info("Angel One recovered by startup retry")
+                try:
+                    from data.market_feed import market_feed
+                    if market_feed._subscriptions:
+                        market_feed.start()
+                except Exception as exc:
+                    logger.debug(f"Market feed restart skipped after Angel retry: {exc}")
+                return
+        logger.error("Angel One startup retry exhausted - use dashboard Angel pill to retry")
+
+    if settings.ANGEL_CLIENT_ID and settings.ANGEL_API_KEY and not angel_api.is_connected():
+        import threading
+        threading.Thread(target=_angel_retry_loop, daemon=True, name="AngelStartupRetry").start()
+
     # Check EasyOCR availability
     try:
         from parsers.signal_parser import _get_reader
@@ -126,4 +151,3 @@ if __name__ == "__main__":
         port=settings.APP_PORT,
         reload=settings.DEBUG,
     )
-

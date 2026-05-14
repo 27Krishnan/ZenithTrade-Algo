@@ -1264,6 +1264,12 @@ async function updateStatus() {
   try {
     const s = await fetch('/api/status').then(r => r.json());
     setPill('p-angel', s.angel_one.connected ? '✅ Angel' : '❌ Angel', s.angel_one.connected ? 'ok' : 'err');
+    const angelPill = document.getElementById('p-angel');
+    if (angelPill) {
+      angelPill.title = s.angel_one.connected ? 'Angel One connected' : 'Click to reconnect Angel One';
+      angelPill.onclick = s.angel_one.connected ? null : reconnectAngel;
+      angelPill.style.cursor = s.angel_one.connected ? 'default' : 'pointer';
+    }
     const f = s.market_feed;
     setPill('p-feed',
       f.state==='active' ? `✅ Feed(${f.subscriptions})` : f.state==='standby' ? '⏸ Feed' : '❌ Feed',
@@ -1275,6 +1281,23 @@ async function updateStatus() {
   } catch { }
 }
 updateStatus(); setInterval(updateStatus, 10000);
+
+async function reconnectAngel() {
+  const pill = document.getElementById('p-angel');
+  if (pill) {
+    pill.textContent = 'Reconnecting Angel';
+    pill.className = 'pill warn';
+  }
+  try {
+    const res = await fetch('/api/angel/reconnect', { method: 'POST', cache: 'no-store' });
+    const data = await res.json();
+    if (!data.success) console.warn(data.message || 'Angel reconnect failed');
+  } catch (e) {
+    console.error('Angel reconnect error:', e);
+  } finally {
+    updateStatus();
+  }
+}
 
 // ══════════════════════════════════════════════════════
 // SIGNAL HANDLING (IMAGE & TEXT)

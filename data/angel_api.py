@@ -132,6 +132,12 @@ class AngelOneAPI:
         """Returns the cached connection status (instant, non-blocking)"""
         return self._connected
 
+    def reconnect(self) -> bool:
+        """Public reconnect hook for startup retry and dashboard manual recovery."""
+        if self._connected:
+            return True
+        return self._try_reconnect()
+
     def _try_reconnect(self) -> bool:
         """Reconnect with exponential backoff — does NOT set _connected=False during attempts."""
 

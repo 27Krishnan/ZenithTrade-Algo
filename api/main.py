@@ -856,6 +856,26 @@ async def system_status():
     }
 
 
+@app.post("/api/angel/reconnect")
+async def reconnect_angel():
+    from data.angel_api import angel_api
+    from data.market_feed import market_feed
+
+    connected = angel_api.reconnect()
+    if connected and market_feed._subscriptions:
+        try:
+            market_feed.stop()
+            market_feed.start()
+        except Exception as exc:
+            logger.warning(f"Angel reconnect ok, market feed restart skipped: {exc}")
+
+    return {
+        "success": connected,
+        "connected": angel_api.is_connected(),
+        "message": "Angel One reconnected" if connected else "Angel One reconnect failed",
+    }
+
+
 @app.post("/api/webhook/data-updated")
 async def data_updated_webhook(request: Request):
     """
