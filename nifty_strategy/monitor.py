@@ -41,6 +41,7 @@ _live: dict = {inst: {} for inst in INSTRUMENTS}
 # Window tracking for Gap (9:15 to 9:30)
 _gap_window: dict = {inst: {"high": 0.0, "low": 999999.0} for inst in INSTRUMENTS}
 _lock = threading.Lock()
+_first_tick: dict = {inst: True for inst in INSTRUMENTS}
 
 def _now_ist():
     return datetime.now(IST)
@@ -330,6 +331,28 @@ def _monitor_tick():
 
         lvl = state.get("levels", {})
         long_st = state["long_state"]; short_st = state["short_state"]
+
+        # ── POST-STARTUP GAP CHECK (runs only on first LTP tick after app restart) ──
+        if _first_tick.get(inst, True):
+            _first_tick[inst] = False
+            # If app restarts during market hours (after 09:16 normal entry time)
+            if ts > "09:16:00" and ts < "15:30:00":
+                if long_st == "PENDING" and lvl.get("e_l") and ltp > lvl["e_l"]:
+                    logger.warning(
+                        f"{inst}: POST-STARTUP GAP detected. LTP={ltp} already ABOVE E_L={lvl['e_l']}. "
+                        "Marking as GAP to prevent wrong entry after restart."
+                    )
+                    _set_state(inst, "long_state", "GAP")
+                    long_st = "GAP"
+                    tg.send_msg(f"⚡ *{inst} Startup GAP Detected*\nLTP *{ltp}* already above E_L *{lvl['e_l']}*.\nMarked as GAP.")
+                if short_st == "PENDING" and lvl.get("e_s") and ltp < lvl["e_s"]:
+                    logger.warning(
+                        f"{inst}: POST-STARTUP GAP detected. LTP={ltp} already BELOW E_S={lvl['e_s']}. "
+                        "Marking as GAP to prevent wrong entry after restart."
+                    )
+                    _set_state(inst, "short_state", "GAP")
+                    short_st = "GAP"
+                    tg.send_msg(f"⚡ *{inst} Startup GAP Detected*\nLTP *{ltp}* already below E_S *{lvl['e_s']}*.\nMarked as GAP.")
 
         # ── 1. 09:15 - 09:30: Track 15-min Range for Recovery ────────
         if "09:15:00" <= ts < "09:30:00":
