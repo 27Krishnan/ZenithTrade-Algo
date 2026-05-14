@@ -155,19 +155,27 @@ class StateOverridePayload(BaseModel):
 
 @router.post("/api/strategy-hub/override-state")
 async def override_instrument_state(payload: StateOverridePayload):
-    """Directly overwrite the live in-memory state for an instrument (admin use)."""
+    """Directly overwrite the live in-memory state for an instrument (admin use).
+    Works even if the strategy is still starting up in the background thread.
+    """
     try:
         strategy = strategy_registry.get(payload.slug)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    monitor = strategy._monitor_mod  # the monitor module
+    # PERMANENT FIX: Force-load modules if not yet initialized.
+    # Strategies start in a background thread with delays — the monitor module
+    # may not be ready immediately after server start. _load_modules() is idempotent.
+    strategy._load_modules()
+
+    monitor = strategy._monitor_mod  # the monitor module (now guaranteed loaded)
+
     from natural_gas_strategy.database import upsert_state as ng_upsert
     from gold_strategy.database import upsert_state as gold_upsert
     from silver_strategy.database import upsert_state as silver_upsert
     from nifty_strategy.database import upsert_state as nifty_upsert
 
-    # Update DB first
+    # Update DB first (persists across restarts)
     upsert_fns = {
         "natural-gas": ng_upsert,
         "gold": gold_upsert,
