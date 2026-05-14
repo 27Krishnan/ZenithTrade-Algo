@@ -1,4 +1,5 @@
 name: Daily MCX & NSE OHLC Data Fetch
+run-name: Daily MCX & NSE OHLC Data Fetch - ${{ github.event_name }}
 
 on:
   push:
@@ -9,13 +10,29 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # PRIMARY: 1:00 AM UTC = 6:30 AM IST
-    # MCX Bhavcopy is available from previous evening.
-    # Fetching at 6:30 AM ensures data is ready well before 8:00 AM briefing.
-    - cron: '0 1 * * 1-5'  # Mon-Fri only
-    # BACKUP: 2:30 AM UTC = 8:00 AM IST (if primary fails)
-    - cron: '30 2 * * 1-5'  # Mon-Fri backup
+    # GitHub scheduled workflows are queued by GitHub and can be delayed or
+    # dropped during high-load minutes, especially at :00 and :30. Use IST
+    # directly and stagger retries on quiet odd minutes before the 8 AM brief.
+    - cron: '47 5 * * 1-5'  # 5:47 AM IST - early primary
+      timezone: "Asia/Kolkata"
+    - cron: '17 6 * * 1-5'  # 6:17 AM IST - backup 1
+      timezone: "Asia/Kolkata"
+    - cron: '47 6 * * 1-5'  # 6:47 AM IST - backup 2
+      timezone: "Asia/Kolkata"
+    - cron: '17 7 * * 1-5'  # 7:17 AM IST - backup 3
+      timezone: "Asia/Kolkata"
+    - cron: '47 7 * * 1-5'  # 7:47 AM IST - final pre-brief backup
+      timezone: "Asia/Kolkata"
+    - cron: '17 8 * * 1-5'  # 8:17 AM IST - recovery if GitHub delayed earlier slots
+      timezone: "Asia/Kolkata"
   workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+concurrency:
+  group: daily-mcx-nse-ohlc-fetch
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Kolkata
 
 jobs:
   fetch-mcx-data:
@@ -29,6 +46,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show trigger and clock context
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Schedule: ${{ github.event.schedule || 'manual/push' }}"
+          echo "UTC now: $(TZ=UTC date +'%Y-%m-%d %H:%M:%S %Z')"
+          echo "IST now: $(TZ=Asia/Kolkata date +'%Y-%m-%d %H:%M:%S %Z')"
 
       - name: Set up Python
         uses: actions/setup-python@v5
