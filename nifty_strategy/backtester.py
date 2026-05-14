@@ -64,7 +64,19 @@ def run_backtest(instrument: str, date_str: str):
         token = token_info["token"]
         sym = token_info["symbol"]
 
-        raw_candles = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=token_info.get("expiry"))
+        # Normalize expiry to datetime (Angel API may return string or datetime)
+        raw_expiry = token_info.get("expiry")
+        if isinstance(raw_expiry, str):
+            for fmt in ("%d%b%Y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    expiry_dt = datetime.strptime(raw_expiry, fmt)
+                    break
+                except ValueError:
+                    expiry_dt = None
+        else:
+            expiry_dt = raw_expiry  # Already datetime
+
+        raw_candles = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=expiry_dt)
         hist_df = pd.DataFrame(raw_candles) if raw_candles else pd.DataFrame(columns=["date", "high", "low", "open", "close"])
         
         if not hist_df.empty:
@@ -81,14 +93,51 @@ def run_backtest(instrument: str, date_str: str):
             if near_info and near_info["token"] != token:
                 token = near_info["token"]
                 sym = near_info["symbol"]
+                raw_exp2 = near_info.get("expiry")
+                if isinstance(raw_exp2, str):
+                    for fmt in ("%d%b%Y", "%Y-%m-%d", "%d-%m-%Y"):
+                        try:
+                            exp2_dt = datetime.strptime(raw_exp2, fmt)
+                            break
+                        except ValueError:
+                            exp2_dt = None
+                else:
+                    exp2_dt = raw_exp2
                 
-                raw_candles2 = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=near_info.get("expiry"))
+                raw_candles2 = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=exp2_dt)
                 hist_df = pd.DataFrame(raw_candles2) if raw_candles2 else pd.DataFrame(columns=["date", "high", "low", "open", "close"])
                 if not hist_df.empty:
                     hist_df = hist_df.sort_values(by="date", ascending=False)
                     past_candles = hist_df[hist_df["date"] < date_str]
                 else:
                     past_candles = pd.DataFrame()
+
+        if len(past_candles) < 2:
+            # Last resort: try all available NSE CSV files for this instrument
+            import os
+            from core.nse_data import DATA_DIR
+            import glob
+            pattern = os.path.join(DATA_DIR, f"{instrument.lower()}_*_ohlc.csv")
+            csv_files = glob.glob(pattern)
+            for csv_file in csv_files:
+                # Extract expiry from filename: nifty_26may2026_ohlc.csv
+                fname = os.path.basename(csv_file)
+                parts = fname.replace("_ohlc.csv", "").split("_", 1)
+                if len(parts) == 2:
+                    try:
+                        try_expiry = datetime.strptime(parts[1], "%d%b%Y")
+                    except ValueError:
+                        continue
+                    raw_c = get_nse_ohlc_from_csv(instrument, n_days=20, expiry_date=try_expiry)
+                    df_try = pd.DataFrame(raw_c) if raw_c else pd.DataFrame()
+                    if not df_try.empty:
+                        df_try = df_try.sort_values(by="date", ascending=False)
+                        pc = df_try[df_try["date"] < date_str]
+                        if len(pc) >= 2:
+                            past_candles = pc
+                            expiry_dt = try_expiry
+                            logger.info(f"Nifty Backtest: Found data in fallback file {fname}")
+                            break
 
         if len(past_candles) < 2:
             return {"error": f"Not enough historical data before {date_str} even with near-month fallback."}
