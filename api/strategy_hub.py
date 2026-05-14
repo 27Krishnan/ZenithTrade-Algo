@@ -183,6 +183,20 @@ async def override_instrument_state(payload: StateOverridePayload):
             if payload.instrument not in monitor._live:
                 monitor._live[payload.instrument] = {}
             monitor._live[payload.instrument].update(payload.state)
+            # CRITICAL: If levels_json was provided as a string, also update the
+            # parsed "levels" dict that the monitor tick reads directly.
+            import json as _json
+            if "levels_json" in payload.state:
+                try:
+                    parsed_levels = _json.loads(payload.state["levels_json"])
+                    # Merge: keep existing keys (like raw_days, token, etc.) but
+                    # override the SL/entry/target values we explicitly set.
+                    existing_levels = monitor._live[payload.instrument].get("levels", {})
+                    existing_levels.update(parsed_levels)
+                    monitor._live[payload.instrument]["levels"] = existing_levels
+                    logger.info(f"override-state: {payload.instrument} levels dict updated from levels_json")
+                except Exception as _e:
+                    logger.warning(f"override-state: could not parse levels_json: {_e}")
         return {"ok": True, "message": f"{payload.instrument} state overridden in memory and DB"}
     else:
         return {"ok": False, "message": "Monitor does not expose _live/_lock — DB updated only"}
