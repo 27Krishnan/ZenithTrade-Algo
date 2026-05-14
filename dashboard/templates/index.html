@@ -2755,6 +2755,8 @@ async function refreshLiveMonitor() {
         const isShortActive = shortState.includes('ACTIVE');
         const isLongGap = longState === 'GAP';
         const isShortGap = shortState === 'GAP';
+        const isLongClosed = longState === 'CLOSED';
+        const isShortClosed = shortState === 'CLOSED';
         const hasGap = isLongGap || isShortGap;
 
         const isEntryToday = (iso) => {
@@ -2811,6 +2813,17 @@ async function refreshLiveMonitor() {
             displayShortEntry = '--'; // Gapped — no entry
           }
           rowStatusHtml = badges;
+        } else if (isLongClosed || isShortClosed) {
+          let badges = '';
+          if (isLongClosed) {
+            badges += `<span style="background:#243044; color:#9fb0c0; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900; margin-right:3px;">L CLOSED</span>`;
+            displayLongEntry = '--';
+          }
+          if (isShortClosed) {
+            badges += `<span style="background:#243044; color:#9fb0c0; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900;">S CLOSED</span>`;
+            displayShortEntry = '--';
+          }
+          rowStatusHtml = badges;
         } else {
           rowStatusHtml = `<span style="background:rgba(255,255,255,0.05); color:#556; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900;">PENDING</span>`;
         }
@@ -2825,6 +2838,7 @@ async function refreshLiveMonitor() {
         // GAP row has orange tint; active rows have green tint
         const rowBg = hasGap
           ? 'background:rgba(255,209,102,0.04); border-left:3px solid #ffd16666;'
+          : (isLongClosed || isShortClosed) ? 'background:rgba(159,176,192,0.035);'
           : (isLongActive || isShortActive) ? 'background:rgba(0,212,170,0.02);' : '';
 
         // Briefing Row
