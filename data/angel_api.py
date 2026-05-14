@@ -350,7 +350,7 @@ class AngelOneAPI:
                     chosen = valid_candidates[1]
                     logger.info(f"Rollover logic (as of {base_date.date()}): {instrument} near-month expiry in {days_to_expiry} days. Using {chosen['symbol']}.")
         
-        return {"symbol": chosen["symbol"], "token": chosen["token"]}
+        return {"symbol": chosen["symbol"], "token": chosen["token"], "expiry": chosen["expiry"]}
 
     def disconnect(self):
         try:
