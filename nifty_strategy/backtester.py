@@ -299,20 +299,34 @@ def run_backtest(instrument: str, date_str: str):
                 ltp = float(c)
                 last_close = ltp
 
-                if sim_day_count == 0 and time_str == "09:15":
-                    open_price = float(o)
-                    if open_price >= (levels["e_l"] or 999999):
-                        events.append({"time": f"{date_iso} 09:15", "event": f"⚠️ GAP UP at {open_price} | Window {win_str}. Waiting for 09:30."})
+                # ── 1. 09:15 - 09:16: One-Minute Gap Detection Window ───────
+                if time_str == "09:15":
+                    # Check for Fresh Entry Gap
+                    if long_state == "PENDING" and levels.get("e_l") and ch >= levels["e_l"]:
+                        events.append({"time": f"{date_iso} 09:15", "event": f"⚠️ 1-MINUTE ENTRY GAP UP detected at {ch} (E_L={levels['e_l']}). Waiting for 09:30."})
                         long_state = "GAP"
-                    elif open_price <= (levels["e_s"] or 0):
-                        events.append({"time": f"{date_iso} 09:15", "event": f"⚠️ GAP DOWN at {open_price} | Window {win_str}. Waiting for 09:30."})
+                    if short_state == "PENDING" and levels.get("e_s") and cl <= levels["e_s"]:
+                        events.append({"time": f"{date_iso} 09:15", "event": f"⚠️ 1-MINUTE ENTRY GAP DOWN at {cl} (E_S={levels['e_s']}). Waiting for 09:30."})
                         short_state = "GAP"
+                    
+                    # Check for Holding SL Gap (Recovery Mode)
+                    if long_state == "ACTIVE_P1" and levels.get("sl1_long") and cl <= levels["sl1_long"]["sl"]:
+                        events.append({"time": f"{date_iso} 09:15", "event": f"🛡️ 1-MINUTE SL GAP detected at {cl} (SL={levels['sl1_long']['sl']}). Waiting for 09:30 Recovery Check."})
+                        long_state = "GAP_RECOVERY"
+                    if short_state == "ACTIVE_P1" and levels.get("sl1_short") and ch >= levels["sl1_short"]["sl"]:
+                        events.append({"time": f"{date_iso} 09:15", "event": f"🛡️ 1-MINUTE SL GAP detected at {ch} (SL={levels['sl1_short']['sl']}). Waiting for 09:30 Recovery Check."})
+                        short_state = "GAP_RECOVERY"
 
                 if "09:15" <= time_str <= "09:30":
                     window_high = max(window_high, ch)
                     window_low = min(window_low, cl)
+                    
+                    # Skip any entry or exit execution during the Gap Window
+                    if long_state in ("GAP", "GAP_RECOVERY") or short_state in ("GAP", "GAP_RECOVERY"):
+                        continue
 
-                if time_str >= "09:30" and (long_state == "GAP" or short_state == "GAP"):
+                # ── 2. 09:30: Gap Recovery & SL Reset ────────────────────────
+                if time_str >= "09:30" and (long_state in ("GAP", "GAP_RECOVERY") or short_state in ("GAP", "GAP_RECOVERY")):
                     if long_state == "GAP":
                         new_e = rt(window_high * 1.00125)
                         pt_a = rt(new_e * 0.9875)
@@ -326,7 +340,8 @@ def run_backtest(instrument: str, date_str: str):
                         levels["sl2_long"]["b"] = pt_b
                         levels["sl2_long"]["sl"] = max(new_e, pt_b)
                         long_state = "PENDING"
-                        events.append({"time": f"{date_iso} {time_str}", "event": f"🔄 GAP RECOVERY (LONG): New Entry L={new_e} | Target L={levels['t_l']} | SL1 L={levels['sl1_long']['sl']}"})
+                        events.append({"time": f"{date_iso} {time_str}", "event": f"🔄 GAP ENTRY RECOVERY: New Entry L={new_e} | Target L={levels['t_l']} | SL1 L={levels['sl1_long']['sl']}"})
+                    
                     if short_state == "GAP":
                         new_e = rt(window_low * 0.99875)
                         pt_a = rt(new_e * 1.0125)
@@ -340,7 +355,19 @@ def run_backtest(instrument: str, date_str: str):
                         levels["sl2_short"]["b"] = pt_b
                         levels["sl2_short"]["sl"] = min(new_e, pt_b)
                         short_state = "PENDING"
-                        events.append({"time": f"{date_iso} {time_str}", "event": f"🔄 GAP RECOVERY (SHORT): New Entry S={new_e} | Target S={levels['t_s']} | SL1 S={levels['sl1_short']['sl']}"})
+                        events.append({"time": f"{date_iso} {time_str}", "event": f"🔄 GAP ENTRY RECOVERY: New Entry S={new_e} | Target S={levels['t_s']} | SL1 S={levels['sl1_short']['sl']}"})
+
+                    if long_state == "GAP_RECOVERY":
+                        new_sl = rt(window_low * 0.99875)
+                        levels["sl1_long"]["sl"] = new_sl
+                        long_state = "ACTIVE_P1"
+                        events.append({"time": f"{date_iso} {time_str}", "event": f"🛡️ GAP SL RECOVERY: New SL set at {new_sl} based on 15-min Low {window_low}"})
+
+                    if short_state == "GAP_RECOVERY":
+                        new_sl = rt(window_high * 1.00125)
+                        levels["sl1_short"]["sl"] = new_sl
+                        short_state = "ACTIVE_P1"
+                        events.append({"time": f"{date_iso} {time_str}", "event": f"🛡️ GAP SL RECOVERY: New SL set at {new_sl} based on 15-min High {window_high}"})
 
                 if long_state == "PENDING" and ch >= (levels["e_l"] or 999999):
                     long_state = "ACTIVE_P1"
