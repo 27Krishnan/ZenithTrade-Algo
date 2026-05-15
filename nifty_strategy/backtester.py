@@ -203,6 +203,10 @@ def run_backtest(instrument: str, date_str: str):
         sim_day_count = 0
 
         while sim_day_count < MAX_SIMULATION_DAYS:
+            # 🛑 BREAK if no entry was found on the FIRST DAY.
+            # We don't want to wait for an old level to hit on a later day.
+            if sim_day_count > 0 and long_state == "PENDING" and short_state == "PENDING":
+                break
             date_iso = current_sim_date.strftime("%Y-%m-%d")
             cur_h2, cur_l2, win_str = 0.0, 999999.0, "No History"
 
