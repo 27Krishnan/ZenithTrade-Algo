@@ -10,21 +10,12 @@ on:
       - 'mcx_bhavcopy/mcx_actions_fetcher.py'
       - 'nse_bhavcopy/nse_actions_fetcher.py'
   schedule:
-    # GitHub scheduled workflows are queued by GitHub and can be delayed or
-    # dropped during high-load minutes, especially at :00 and :30. Use IST
-    # directly and stagger retries on quiet odd minutes before the 8 AM brief.
-    - cron: '47 5 * * 1-5'  # 5:47 AM IST - early primary
-      timezone: "Asia/Kolkata"
-    - cron: '17 6 * * 1-5'  # 6:17 AM IST - backup 1
-      timezone: "Asia/Kolkata"
-    - cron: '47 6 * * 1-5'  # 6:47 AM IST - backup 2
-      timezone: "Asia/Kolkata"
-    - cron: '17 7 * * 1-5'  # 7:17 AM IST - backup 3
-      timezone: "Asia/Kolkata"
-    - cron: '47 7 * * 1-5'  # 7:47 AM IST - final pre-brief backup
-      timezone: "Asia/Kolkata"
-    - cron: '17 8 * * 1-5'  # 8:17 AM IST - recovery if GitHub delayed earlier slots
-      timezone: "Asia/Kolkata"
+    # GitHub cron always runs in UTC. India (IST) = UTC + 5:30
+    # MCX previous-day data is available by ~1:30 AM IST.
+    # Primary: 7:00 AM IST = 1:30 AM UTC
+    - cron: '30 1 * * 2-6'   # Tue–Sat 1:30 AM UTC (= Mon–Fri 7:00 AM IST)
+    # Backup: 8:00 AM IST = 2:30 AM UTC (if primary delayed/skipped by GitHub)
+    - cron: '30 2 * * 2-6'   # Tue–Sat 2:30 AM UTC (= Mon–Fri 8:00 AM IST)
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 concurrency:
