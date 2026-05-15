@@ -106,23 +106,21 @@ def get_today_state(instrument: str) -> DailyState | None:
 def get_active_state(instrument: str) -> DailyState | None:
     """Find the most recent row that has an active position (ACTIVE_P1 or ACTIVE_P2).
     
-    PERMANENT FIX: Search all recent rows (up to 7 days back), not just today's row.
-    This ensures carry-forward works correctly:
-    - If today's row shows CLOSED (e.g. due to erroneous injection), but yesterday's
-      row has ACTIVE_P2, the carry-forward logic will correctly pick it up.
-    - The monitor's load_today_states() then upserts it into today's row.
+    If the absolute most recent trading day was CLOSED or PENDING, the carry-forward chain
+    is broken, and this returns None. It will only return an active state if the very last
+    recorded day ended with an active holding.
     """
     db = Session()
     try:
-        # Search last 7 rows ordered newest-first (covers weekends + holidays)
-        recent_rows = db.query(DailyState).filter(
+        # Get the absolute most recent row in the database
+        recent_row = db.query(DailyState).filter(
             DailyState.instrument == instrument
-        ).order_by(DailyState.date.desc()).limit(7).all()
+        ).order_by(DailyState.date.desc()).first()
 
-        for row in recent_rows:
-            if (row.long_state in ("ACTIVE_P1", "ACTIVE_P2") or
-                    row.short_state in ("ACTIVE_P1", "ACTIVE_P2")):
-                return row
+        if recent_row:
+            if (recent_row.long_state in ("ACTIVE_P1", "ACTIVE_P2") or
+                    recent_row.short_state in ("ACTIVE_P1", "ACTIVE_P2")):
+                return recent_row
         return None
     finally:
         db.close()

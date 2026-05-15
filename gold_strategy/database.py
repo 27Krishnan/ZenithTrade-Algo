@@ -103,17 +103,17 @@ def get_today_state(instrument: str) -> DailyState | None:
 
 
 def get_active_state(instrument: str) -> DailyState | None:
-    """Find the most recent row with an active position (searches last 7 rows)."""
+    """Find the most recent row that has an active position (ACTIVE_P1 or ACTIVE_P2)."""
     db = Session()
     try:
-        recent_rows = db.query(DailyState).filter(
+        recent_row = db.query(DailyState).filter(
             DailyState.instrument == instrument
-        ).order_by(DailyState.date.desc()).limit(7).all()
+        ).order_by(DailyState.date.desc()).first()
 
-        for row in recent_rows:
-            if (row.long_state in ("ACTIVE_P1", "ACTIVE_P2") or
-                    row.short_state in ("ACTIVE_P1", "ACTIVE_P2")):
-                return row
+        if recent_row:
+            if (recent_row.long_state in ("ACTIVE_P1", "ACTIVE_P2") or
+                    recent_row.short_state in ("ACTIVE_P1", "ACTIVE_P2")):
+                return recent_row
         return None
     finally:
         db.close()

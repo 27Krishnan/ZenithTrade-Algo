@@ -86,15 +86,25 @@ def load_today_states():
     missing = False
     today = datetime.now(IST).date().isoformat()
     for inst in INSTRUMENTS:
-        # Priority: Load active overnight trade, else load today's fresh row
-        row = get_active_state(inst)
-        if row:
+        # Priority 1: Load today's exact state if it exists (preserves CLOSED/PENDING after restart)
+        from .database import get_today_state
+        today_row = get_today_state(inst)
+        if today_row:
             with _lock:
-                _live[inst] = _row_to_live(row)
-            needs_refresh = _levels_need_refresh(row, today)
+                _live[inst] = _row_to_live(today_row)
+            needs_refresh = _levels_need_refresh(today_row, today)
+            if needs_refresh:
+                logger.info(f"Natural Gas Strategy: Refreshing lookback levels for {inst} on {today}")
+                missing = True
+        else:
+            # Priority 2: Load active overnight trade, else fresh
+            row = get_active_state(inst)
+            if row:
+                with _lock:
+                    _live[inst] = _row_to_live(row)
+                needs_refresh = _levels_need_refresh(row, today)
 
-            # If the row we found is NOT from today, upsert it to today's ID immediately
-            if row.date != today:
+                # Upsert to today's ID immediately
                 logger.info(f"Natural Gas Strategy: Carrying forward active trade for {inst} from {row.date} to {today}")
                 
                 # Reset states that are not ACTIVE to PENDING for the new day
@@ -117,11 +127,11 @@ def load_today_states():
                     "levels_json": row.levels_json
                 })
                 needs_refresh = True
-            if needs_refresh:
-                logger.info(f"Natural Gas Strategy: Refreshing lookback levels for {inst} on {today}")
+                if needs_refresh:
+                    logger.info(f"Natural Gas Strategy: Refreshing lookback levels for {inst} on {today}")
+                    missing = True
+            else:
                 missing = True
-        else:
-            missing = True
 
     if missing:
         logger.info("Natural Gas Strategy: No states found for today. Triggering automatic fetch...")
