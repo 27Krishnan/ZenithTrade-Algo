@@ -90,12 +90,12 @@ class MarketScheduler:
             day_of_week="mon-fri", hour=9, minute=1,
             id="morning_connect"
         )
-        # Daily MCX Bhavcopy Fetch (8:30 AM IST)
-        # GitHub Actions runs at 8:00 AM IST (2:30 AM UTC) and takes ~5 min.
-        # 8:30 AM gives a comfortable 30-min buffer for GitHub to complete.
+        # Daily MCX Bhavcopy Fetch Backup (7:50 AM IST)
+        # GitHub Actions runs at 5:12 AM / 6:43 AM IST and takes ~5 min.
+        # 7:50 AM gives a comfortable buffer and guarantees server has data before 8:00 AM.
         self.scheduler.add_job(
             self._run_mcx_fetcher, "cron",
-            day_of_week="mon-fri", hour=8, minute=30,
+            day_of_week="mon-fri", hour=7, minute=50,
             id="mcx_fetcher"
         )
 
