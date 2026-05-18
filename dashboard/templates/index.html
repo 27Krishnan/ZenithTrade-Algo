@@ -2847,6 +2847,15 @@ async function refreshLiveMonitor() {
             displayShortEntry = '--';
           }
           rowStatusHtml = badges;
+        } else if (state.long_gap_recovered || state.short_gap_recovered) {
+          let badges = '';
+          if (state.long_gap_recovered) {
+            badges += `<span style="display:inline-flex;align-items:center;background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.3);color:#00e676;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:900;margin-right:3px;">${gapUpSvg}L RECOVERY</span>`;
+          }
+          if (state.short_gap_recovered) {
+            badges += `<span style="display:inline-flex;align-items:center;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);color:#ff4d6d;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:900;">${gapDnSvg}S RECOVERY</span>`;
+          }
+          rowStatusHtml = badges;
         } else {
           rowStatusHtml = `<span style="background:rgba(255,255,255,0.05); color:#556; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:900;">PENDING</span>`;
         }

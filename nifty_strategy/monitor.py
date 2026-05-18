@@ -560,6 +560,7 @@ def _handle_gap_recovery_930(inst: str, state: dict, ltp: float):
         logger.info(f"{inst}: NIFTY LONG Gap Recovery at 9:30. New E_L: {new_e}")
         tg.send_msg(f"✅ *NIFTY LONG GAP RECOVERY (9:30 AM)*\nNew Entry: *{new_e}*\nTarget: *{nl.t_l}*\nSL1: *{nl.sl1_long['sl']}*")
         _set_state(inst, "long_state", "PENDING")
+        _set_state(inst, "long_gap_recovered", True)
 
     if short_st == "GAP":
         new_e = rt(g_l * 0.99875)
@@ -567,6 +568,7 @@ def _handle_gap_recovery_930(inst: str, state: dict, ltp: float):
         logger.info(f"{inst}: NIFTY SHORT Gap Recovery at 9:30. New E_S: {new_e}")
         tg.send_msg(f"✅ *NIFTY SHORT GAP RECOVERY (9:30 AM)*\nNew Entry: *{new_e}*\nTarget: *{nl.t_s}*\nSL1: *{nl.sl1_short['sl']}*")
         _set_state(inst, "short_state", "PENDING")
+        _set_state(inst, "short_gap_recovered", True)
 
     new_lvl = nl.to_dict()
     _set_state(inst, "levels", new_lvl)

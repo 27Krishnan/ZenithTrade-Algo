@@ -703,6 +703,7 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
 
             _set_state(inst, "levels", lvl)
             _set_state(inst, "long_state", "PENDING")  # Reset to PENDING with NEW entry
+            _set_state(inst, "long_gap_recovered", True)
             changed = True
             logger.info(
                 f"{inst}: GAP RECOVERY (LONG) at 9:15 — "
@@ -738,6 +739,7 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
 
             _set_state(inst, "levels", lvl)
             _set_state(inst, "short_state", "PENDING")  # Reset to PENDING with NEW entry
+            _set_state(inst, "short_gap_recovered", True)
             changed = True
             logger.info(
                 f"{inst}: GAP RECOVERY (SHORT) at 9:15 — "

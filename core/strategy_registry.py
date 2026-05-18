@@ -184,6 +184,8 @@ class CommodityStrategyRuntime:
                     "long_pnl": state.get("long_pnl", 0),
                     "short_pnl": state.get("short_pnl", 0),
                     "auto_trade": state.get("auto_trade", False),
+                    "long_gap_recovered": state.get("long_gap_recovered", False),
+                    "short_gap_recovered": state.get("short_gap_recovered", False),
                 }
             )
 

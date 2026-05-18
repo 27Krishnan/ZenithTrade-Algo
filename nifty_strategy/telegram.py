@@ -34,10 +34,16 @@ from .database import get_setting
 # ─── Core send ───────────────────────────────────────────────────────────────
 
 def _token() -> str:
-    return get_setting("telegram_bot_token", "")
+    t = get_setting("telegram_bot_token", "")
+    if not t or "7657983245" in t:
+        return settings.TELEGRAM_BOT_TOKEN
+    return t
 
 def _chat_id() -> str:
-    return get_setting("telegram_chat_id", "")
+    c = get_setting("telegram_chat_id", "")
+    if not c or "-1002639599677" in c:
+        return settings.TELEGRAM_CHAT_ID
+    return c
 
 def send(message: str) -> bool:
     if not settings.ENABLE_TELEGRAM_ALERTS:
@@ -60,6 +66,10 @@ def send(message: str) -> bool:
     except Exception as e:
         logger.error(f"Telegram send error: {e}")
         return False
+
+def send_msg(message: str) -> bool:
+    """Wrapper for backward compatibility or direct text messages."""
+    return send(message)
 
 
 # ─── Message builders ─────────────────────────────────────────────────────────
