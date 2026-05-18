@@ -298,7 +298,7 @@ def set_levels_from_nifty_levels(inst: str, gl: NiftyLevels):
             "auto_trade":       saved_auto,
         })
     
-    # Clear gap_e_l / gap_e_s on every fresh daily fetch — fresh levels take over
+    # On every fresh daily fetch — clear gap_recovered flags, fresh 4-day values always take over
     d.pop("gap_e_l", None)
     d.pop("gap_e_s", None)
     d.pop("gap_t_l", None)
@@ -314,10 +314,12 @@ def set_levels_from_nifty_levels(inst: str, gl: NiftyLevels):
         "long_entry_price": state["long_entry_price"],
         "long_entry_date":  state["long_entry_date"],
         "long_pnl":         state["long_pnl"],
+        "long_gap_recovered": False,
         "short_state":      state["short_state"],
         "short_entry_price":state["short_entry_price"],
         "short_entry_date": state["short_entry_date"],
         "short_pnl":        state["short_pnl"],
+        "short_gap_recovered": False,
         "auto_trade":       saved_auto,
     })
     _recalculate_active_levels(_live[inst])
@@ -338,10 +340,9 @@ def _monitor_tick():
 
         lvl = state.get("levels", {})
         long_st = state["long_state"]; short_st = state["short_state"]
-        # Use gap recovery entry levels if available (set at 9:30 AM after a gap event)
-        # Dashboard always shows fresh e_l/e_s; gap_e_l/gap_e_s used only for trade trigger
-        eff_e_l = lvl.get("gap_e_l") or lvl.get("e_l", 0)
-        eff_e_s = lvl.get("gap_e_s") or lvl.get("e_s", 0)
+        # Always use e_l/e_s directly — they reflect the current working calculation
+        eff_e_l = lvl.get("e_l", 0)
+        eff_e_s = lvl.get("e_s", 0)
 
         # ── POST-STARTUP GAP CHECK (runs only on first LTP tick after app restart) ──
         if _first_tick.get(inst, True):
@@ -570,35 +571,21 @@ def _handle_gap_recovery_930(inst: str, state: dict, ltp: float):
     if long_st == "GAP":
         new_e = rt(g_h * 1.00125)
         nl.update_from_actual_entry(new_e, "long")
-        logger.info(f"{inst}: NIFTY LONG Gap Recovery at 9:30. Gap E_L: {new_e} | Dashboard E_L unchanged")
-        tg.send_msg(f"✅ *NIFTY LONG GAP RECOVERY (9:30 AM)*\nGap Long Entry: *{new_e}*\nTarget: *{nl.t_l}*\nSL1: *{nl.sl1_long['sl']}*")
+        logger.info(f"{inst}: NIFTY LONG Gap Recovery at 9:30. New E_L: {new_e}")
+        tg.send_msg(f"✅ *NIFTY LONG GAP RECOVERY (9:30 AM)*\nNew Long Entry: *{new_e}*\nTarget: *{nl.t_l}*\nSL1: *{nl.sl1_long['sl']}*")
         _set_state(inst, "long_state", "PENDING")
         _set_state(inst, "long_gap_recovered", True)
-        # Store gap entry in gap_e_l — do NOT overwrite e_l (dashboard stays clean)
-        state["levels"]["gap_e_l"] = new_e
-        state["levels"]["gap_t_l"] = nl.t_l
 
     if short_st == "GAP":
         new_e = rt(g_l * 0.99875)
         nl.update_from_actual_entry(new_e, "short")
-        logger.info(f"{inst}: NIFTY SHORT Gap Recovery at 9:30. Gap E_S: {new_e} | Dashboard E_S unchanged")
-        tg.send_msg(f"✅ *NIFTY SHORT GAP RECOVERY (9:30 AM)*\nGap Short Entry: *{new_e}*\nTarget: *{nl.t_s}*\nSL1: *{nl.sl1_short['sl']}*")
+        logger.info(f"{inst}: NIFTY SHORT Gap Recovery at 9:30. New E_S: {new_e}")
+        tg.send_msg(f"✅ *NIFTY SHORT GAP RECOVERY (9:30 AM)*\nNew Short Entry: *{new_e}*\nTarget: *{nl.t_s}*\nSL1: *{nl.sl1_short['sl']}*")
         _set_state(inst, "short_state", "PENDING")
         _set_state(inst, "short_gap_recovered", True)
-        # Store gap entry in gap_e_s — do NOT overwrite e_s (dashboard stays clean)
-        state["levels"]["gap_e_s"] = new_e
-        state["levels"]["gap_t_s"] = nl.t_s
 
-    # Build new levels preserving fresh e_l/e_s, only update SL/target from recovery
+    # Build new levels with gap recovery values — dashboard reflects new calculation
     new_lvl = nl.to_dict()
-    # Restore original fresh e_l/e_s so dashboard doesn't change
-    orig_lvl = state.get("levels", {})
-    if orig_lvl.get("e_l"): new_lvl["e_l"] = orig_lvl["e_l"]
-    if orig_lvl.get("e_s"): new_lvl["e_s"] = orig_lvl["e_s"]
-    if orig_lvl.get("gap_e_l"): new_lvl["gap_e_l"] = orig_lvl["gap_e_l"]
-    if orig_lvl.get("gap_e_s"): new_lvl["gap_e_s"] = orig_lvl["gap_e_s"]
-    if orig_lvl.get("gap_t_l"): new_lvl["gap_t_l"] = orig_lvl["gap_t_l"]
-    if orig_lvl.get("gap_t_s"): new_lvl["gap_t_s"] = orig_lvl["gap_t_s"]
     _set_state(inst, "levels", new_lvl)
     _set_state(inst, "last_gap_recovery_date", today)
     upsert_state(inst, {"levels_json": json.dumps(new_lvl)})

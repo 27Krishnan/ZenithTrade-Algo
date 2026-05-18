@@ -379,12 +379,7 @@ def set_levels_from_gold_levels(inst: str, gl: GoldLevels):
         }
         _recalculate_active_levels(_live[inst])  # Apply entry-price overrides
 
-    # Clear gap_e_l / gap_e_s on every fresh daily fetch — fresh 4-day MCX levels take over
-    d.pop("gap_e_l", None)
-    d.pop("gap_e_s", None)
-    d.pop("gap_t_l", None)
-    d.pop("gap_t_s", None)
-
+    # On every fresh daily fetch — clear gap_recovered flags, fresh 4-day values always take over
     upsert_state(inst, {
         "trading_symbol":   gl.trading_symbol,
         "token":            gl.token,
@@ -396,11 +391,13 @@ def set_levels_from_gold_levels(inst: str, gl: GoldLevels):
         "long_entry_date":  _live[inst]["long_entry_date"],
         "long_lot1_closed": _live[inst]["long_lot1_closed"],
         "long_pnl":         _live[inst]["long_pnl"],
+        "long_gap_recovered": False,
         "short_state":      _live[inst]["short_state"],
         "short_entry_price":_live[inst]["short_entry_price"],
         "short_entry_date": _live[inst]["short_entry_date"],
         "short_lot1_closed":_live[inst]["short_lot1_closed"],
         "short_pnl":        _live[inst]["short_pnl"],
+        "short_gap_recovered": False,
         "auto_trade":       saved_auto,
     })
 
@@ -429,10 +426,9 @@ def _monitor_tick():
             continue
 
         lvl   = state.get("levels", {})
-        # Use gap recovery entry levels if available (set at 9:15 AM after a gap event)
-        # Dashboard always shows fresh e_l/e_s; gap_e_l/gap_e_s used only for trade trigger
-        e_l   = lvl.get("gap_e_l") or lvl.get("e_l", 0)
-        e_s   = lvl.get("gap_e_s") or lvl.get("e_s", 0)
+        # Always use e_l/e_s directly — they reflect the current working calculation
+        e_l   = lvl.get("e_l", 0)
+        e_s   = lvl.get("e_s", 0)
         t_l   = lvl.get("t_l", 0)
         t_s   = lvl.get("t_s", 0)
         sl1l  = lvl.get("sl1_long",  {}).get("sl", 0)
@@ -686,8 +682,8 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
         from .calculator import rt
 
         # ── CASE 1: GAP RECOVERY ──────────────────────────────────────────────────
-        # KEY RULE: e_l / e_s are NEVER overridden — they always show fresh 4-day MCX calc.
-        # Gap recovery entry stored in gap_e_l / gap_e_s for internal trade triggering only.
+        # Gap recovery updates e_l/e_s so dashboard reflects new calculation.
+        # Next day's fresh fetch always overwrites with fresh 4-day values.
         if state["long_state"] == "GAP":
             new_e_l  = rt(m15_high * 1.0012)
             new_t_l  = rt(new_e_l * 1.015)
@@ -698,9 +694,9 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             sl2_b    = lvl.get("sl2_long", {}).get("b", 0)
             new_sl2_l = max(sl2_a, sl2_b)
 
-            # Store gap entry internally — do NOT overwrite e_l (dashboard stays clean)
-            lvl["gap_e_l"] = new_e_l
-            lvl["gap_t_l"] = new_t_l
+            # Update e_l/t_l so dashboard reflects the new gap recovery calculation
+            lvl["e_l"] = new_e_l
+            lvl["t_l"] = new_t_l
             if "sl1_long" in lvl:
                 lvl["sl1_long"]["a"] = sl1_a
                 lvl["sl1_long"]["sl"] = new_sl1_l
@@ -712,17 +708,11 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             _set_state(inst, "long_state", "PENDING")
             _set_state(inst, "long_gap_recovered", True)
             changed = True
-            logger.info(
-                f"{inst}: GAP RECOVERY (LONG) at 9:15 — "
-                f"Gap E_L={new_e_l} | Gap T_L={new_t_l} | SL1={new_sl1_l} "
-                f"(15-min high={m15_high}) | Dashboard E_L unchanged={lvl.get('e_l')}"
-            )
+            logger.info(f"{inst}: GAP RECOVERY (LONG) at 9:15 — New E_L={new_e_l} | T_L={new_t_l} | SL1={new_sl1_l}")
             tg.send_msg(
                 f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
-                f"15-min High: *{m15_high}*\n"
-                f"Gap Long Entry: *{new_e_l}* (High × 1.0012)\n"
-                f"Target: *{new_t_l}* | SL1: *{new_sl1_l}*\n"
-                f"Status → PENDING (waiting for entry trigger)"
+                f"15-min High: *{m15_high}*\nNew Long Entry: *{new_e_l}*\n"
+                f"Target: *{new_t_l}* | SL1: *{new_sl1_l}*"
             )
 
         if state["short_state"] == "GAP":
@@ -735,9 +725,9 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             sl2_b    = lvl.get("sl2_short", {}).get("b", 9999999)
             new_sl2_s = min(sl2_a, sl2_b)
 
-            # Store gap entry internally — do NOT overwrite e_s (dashboard stays clean)
-            lvl["gap_e_s"] = new_e_s
-            lvl["gap_t_s"] = new_t_s
+            # Update e_s/t_s so dashboard reflects the new gap recovery calculation
+            lvl["e_s"] = new_e_s
+            lvl["t_s"] = new_t_s
             if "sl1_short" in lvl:
                 lvl["sl1_short"]["a"] = sl1_a
                 lvl["sl1_short"]["sl"] = new_sl1_s
@@ -749,17 +739,11 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             _set_state(inst, "short_state", "PENDING")
             _set_state(inst, "short_gap_recovered", True)
             changed = True
-            logger.info(
-                f"{inst}: GAP RECOVERY (SHORT) at 9:15 — "
-                f"Gap E_S={new_e_s} | Gap T_S={new_t_s} | SL1={new_sl1_s} "
-                f"(15-min low={m15_low}) | Dashboard E_S unchanged={lvl.get('e_s')}"
-            )
+            logger.info(f"{inst}: GAP RECOVERY (SHORT) at 9:15 — New E_S={new_e_s} | T_S={new_t_s} | SL1={new_sl1_s}")
             tg.send_msg(
                 f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
-                f"15-min Low: *{m15_low}*\n"
-                f"Gap Short Entry: *{new_e_s}* (Low × 0.9988)\n"
-                f"Target: *{new_t_s}* | SL1: *{new_sl1_s}*\n"
-                f"Status → PENDING (waiting for entry trigger)"
+                f"15-min Low: *{m15_low}*\nNew Short Entry: *{new_e_s}*\n"
+                f"Target: *{new_t_s}* | SL1: *{new_sl1_s}*"
             )
 
         # ── CASE 2: SL RESET for ACTIVE positions (existing logic) ──────────────────
