@@ -265,6 +265,21 @@ def set_levels_from_nifty_levels(inst: str, gl: NiftyLevels):
         long_st = state.get("long_state")
         short_st = state.get("short_state")
         
+        # ── GAP RECOVERY PRESERVATION: If we restart on the same day, preserve the recovered gap levels
+        if old_lvl.get("long_gap_recovered"):
+            d["e_l"] = old_lvl.get("e_l", d["e_l"])
+            d["t_l"] = old_lvl.get("t_l", d["t_l"])
+            if "sl1_long" in old_lvl: d["sl1_long"] = old_lvl["sl1_long"]
+            if "sl2_long" in old_lvl: d["sl2_long"] = old_lvl["sl2_long"]
+            d["long_gap_recovered"] = True
+            
+        if old_lvl.get("short_gap_recovered"):
+            d["e_s"] = old_lvl.get("e_s", d["e_s"])
+            d["t_s"] = old_lvl.get("t_s", d["t_s"])
+            if "sl1_short" in old_lvl: d["sl1_short"] = old_lvl["sl1_short"]
+            if "sl2_short" in old_lvl: d["sl2_short"] = old_lvl["sl2_short"]
+            d["short_gap_recovered"] = True
+        
         if long_st in ("ACTIVE_P1", "ACTIVE_P2"):
             if "sl1_long" in d and "sl1_long" in old_lvl:
                 d["sl1_long"]["sl"] = max(d["sl1_long"]["sl"], old_lvl["sl1_long"]["sl"])
@@ -586,6 +601,8 @@ def _handle_gap_recovery_930(inst: str, state: dict, ltp: float):
 
     # Build new levels with gap recovery values — dashboard reflects new calculation
     new_lvl = nl.to_dict()
+    if long_st == "GAP": new_lvl["long_gap_recovered"] = True
+    if short_st == "GAP": new_lvl["short_gap_recovered"] = True
     _set_state(inst, "levels", new_lvl)
     _set_state(inst, "last_gap_recovery_date", today)
     upsert_state(inst, {"levels_json": json.dumps(new_lvl)})

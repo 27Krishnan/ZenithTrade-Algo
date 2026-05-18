@@ -302,6 +302,23 @@ def set_levels_from_natural_gas_levels(inst: str, gl: NaturalGasLevels):
                 d["sl2_short"]["sl"] = min(d["sl2_short"]["sl"], old_lvl["sl2_short"]["sl"])
                 d["sl2_short"]["b"] = min(d["sl2_short"]["b"], old_lvl["sl2_short"].get("b", 9999999))
 
+        prev_lvl = prev.get("levels", {})
+
+        # ── GAP RECOVERY PRESERVATION: If we restart on the same day, preserve the recovered gap levels
+        if prev_lvl.get("long_gap_recovered"):
+            d["e_l"] = prev_lvl.get("e_l", d["e_l"])
+            d["t_l"] = prev_lvl.get("t_l", d["t_l"])
+            if "sl1_long" in prev_lvl: d["sl1_long"] = prev_lvl["sl1_long"]
+            if "sl2_long" in prev_lvl: d["sl2_long"] = prev_lvl["sl2_long"]
+            d["long_gap_recovered"] = True
+            
+        if prev_lvl.get("short_gap_recovered"):
+            d["e_s"] = prev_lvl.get("e_s", d["e_s"])
+            d["t_s"] = prev_lvl.get("t_s", d["t_s"])
+            if "sl1_short" in prev_lvl: d["sl1_short"] = prev_lvl["sl1_short"]
+            if "sl2_short" in prev_lvl: d["sl2_short"] = prev_lvl["sl2_short"]
+            d["short_gap_recovered"] = True
+
         if inst not in _live:
             _live[inst] = {}
             
@@ -638,6 +655,8 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
                 lvl["sl2_long"]["a"] = sl2_a
                 lvl["sl2_long"]["sl"] = new_sl2_l
 
+            lvl["long_gap_recovered"] = True
+
             _set_state(inst, "levels", lvl)
             _set_state(inst, "long_state", "PENDING")
             _set_state(inst, "long_gap_recovered", True)
@@ -667,6 +686,8 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             if "sl2_short" in lvl:
                 lvl["sl2_short"]["a"] = sl2_a
                 lvl["sl2_short"]["sl"] = new_sl2_s
+
+            lvl["short_gap_recovered"] = True
 
             _set_state(inst, "levels", lvl)
             _set_state(inst, "short_state", "PENDING")
