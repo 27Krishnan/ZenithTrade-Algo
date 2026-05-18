@@ -164,13 +164,14 @@ def sync_live(instrument: str, type: str, sim: dict):
     return {"success": True}
 
 def _row_to_live(row) -> dict:
-    return {
+    lvl = row.levels if isinstance(row.levels, dict) else {}
+    d = {
         "instrument":       row.instrument,
         "trading_symbol":   row.trading_symbol,
         "token":            row.token,
         "lot_size":         row.lot_size,
         "h4": row.h4, "l4": row.l4, "h2": row.h2, "l2": row.l2,
-        "levels":           row.levels,
+        "levels":           lvl,
         "long_state":       row.long_state,
         "short_state":      row.short_state,
         "long_entry_price": row.long_entry_price,
@@ -297,6 +298,12 @@ def set_levels_from_nifty_levels(inst: str, gl: NiftyLevels):
             "auto_trade":       saved_auto,
         })
     
+    # Clear gap_e_l / gap_e_s on every fresh daily fetch — fresh levels take over
+    d.pop("gap_e_l", None)
+    d.pop("gap_e_s", None)
+    d.pop("gap_t_l", None)
+    d.pop("gap_t_s", None)
+
     upsert_state(inst, {
         "trading_symbol":   gl.trading_symbol,
         "token":            gl.token,
@@ -331,6 +338,10 @@ def _monitor_tick():
 
         lvl = state.get("levels", {})
         long_st = state["long_state"]; short_st = state["short_state"]
+        # Use gap recovery entry levels if available (set at 9:30 AM after a gap event)
+        # Dashboard always shows fresh e_l/e_s; gap_e_l/gap_e_s used only for trade trigger
+        eff_e_l = lvl.get("gap_e_l") or lvl.get("e_l", 0)
+        eff_e_s = lvl.get("gap_e_s") or lvl.get("e_s", 0)
 
         # ── POST-STARTUP GAP CHECK (runs only on first LTP tick after app restart) ──
         if _first_tick.get(inst, True):
@@ -388,12 +399,12 @@ def _monitor_tick():
         if long_st == "GAP" or short_st == "GAP":
             continue
 
-        # Long Entry
-        if long_st == "PENDING" and lvl.get("e_l") and ltp >= lvl["e_l"]:
+        # Long Entry — use gap entry level if present
+        if long_st == "PENDING" and eff_e_l and ltp >= eff_e_l:
             _trigger_long(inst, ltp, lvl, state)
 
-        # Short Entry
-        if short_st == "PENDING" and lvl.get("e_s") and ltp <= lvl["e_s"]:
+        # Short Entry — use gap entry level if present
+        if short_st == "PENDING" and eff_e_s and ltp <= eff_e_s:
             _trigger_short(inst, ltp, lvl, state)
         
         # Long Monitoring
@@ -417,7 +428,8 @@ def _monitor_tick():
             if sl and ltp >= sl: _close_short(inst, ltp, "SL2_HIT", sl)
 
 def _trigger_long(inst, ltp, lvl, state):
-    entry_price = lvl.get("e_l")
+    # Use gap entry level if available, else fresh e_l
+    entry_price = lvl.get("gap_e_l") or lvl.get("e_l")
     if not entry_price:
         return
     _set_state(inst, "long_state", "ACTIVE_P1")
@@ -434,7 +446,8 @@ def _trigger_long(inst, ltp, lvl, state):
     _send_to_main_app(inst, "BUY", entry_price, sl1l, [t_l], state, state.get("auto_trade", False))
 
 def _trigger_short(inst, ltp, lvl, state):
-    entry_price = lvl.get("e_s")
+    # Use gap entry level if available, else fresh e_s
+    entry_price = lvl.get("gap_e_s") or lvl.get("e_s")
     if not entry_price:
         return
     _set_state(inst, "short_state", "ACTIVE_P1")
@@ -557,20 +570,35 @@ def _handle_gap_recovery_930(inst: str, state: dict, ltp: float):
     if long_st == "GAP":
         new_e = rt(g_h * 1.00125)
         nl.update_from_actual_entry(new_e, "long")
-        logger.info(f"{inst}: NIFTY LONG Gap Recovery at 9:30. New E_L: {new_e}")
-        tg.send_msg(f"✅ *NIFTY LONG GAP RECOVERY (9:30 AM)*\nNew Entry: *{new_e}*\nTarget: *{nl.t_l}*\nSL1: *{nl.sl1_long['sl']}*")
+        logger.info(f"{inst}: NIFTY LONG Gap Recovery at 9:30. Gap E_L: {new_e} | Dashboard E_L unchanged")
+        tg.send_msg(f"✅ *NIFTY LONG GAP RECOVERY (9:30 AM)*\nGap Long Entry: *{new_e}*\nTarget: *{nl.t_l}*\nSL1: *{nl.sl1_long['sl']}*")
         _set_state(inst, "long_state", "PENDING")
         _set_state(inst, "long_gap_recovered", True)
+        # Store gap entry in gap_e_l — do NOT overwrite e_l (dashboard stays clean)
+        state["levels"]["gap_e_l"] = new_e
+        state["levels"]["gap_t_l"] = nl.t_l
 
     if short_st == "GAP":
         new_e = rt(g_l * 0.99875)
         nl.update_from_actual_entry(new_e, "short")
-        logger.info(f"{inst}: NIFTY SHORT Gap Recovery at 9:30. New E_S: {new_e}")
-        tg.send_msg(f"✅ *NIFTY SHORT GAP RECOVERY (9:30 AM)*\nNew Entry: *{new_e}*\nTarget: *{nl.t_s}*\nSL1: *{nl.sl1_short['sl']}*")
+        logger.info(f"{inst}: NIFTY SHORT Gap Recovery at 9:30. Gap E_S: {new_e} | Dashboard E_S unchanged")
+        tg.send_msg(f"✅ *NIFTY SHORT GAP RECOVERY (9:30 AM)*\nGap Short Entry: *{new_e}*\nTarget: *{nl.t_s}*\nSL1: *{nl.sl1_short['sl']}*")
         _set_state(inst, "short_state", "PENDING")
         _set_state(inst, "short_gap_recovered", True)
+        # Store gap entry in gap_e_s — do NOT overwrite e_s (dashboard stays clean)
+        state["levels"]["gap_e_s"] = new_e
+        state["levels"]["gap_t_s"] = nl.t_s
 
+    # Build new levels preserving fresh e_l/e_s, only update SL/target from recovery
     new_lvl = nl.to_dict()
+    # Restore original fresh e_l/e_s so dashboard doesn't change
+    orig_lvl = state.get("levels", {})
+    if orig_lvl.get("e_l"): new_lvl["e_l"] = orig_lvl["e_l"]
+    if orig_lvl.get("e_s"): new_lvl["e_s"] = orig_lvl["e_s"]
+    if orig_lvl.get("gap_e_l"): new_lvl["gap_e_l"] = orig_lvl["gap_e_l"]
+    if orig_lvl.get("gap_e_s"): new_lvl["gap_e_s"] = orig_lvl["gap_e_s"]
+    if orig_lvl.get("gap_t_l"): new_lvl["gap_t_l"] = orig_lvl["gap_t_l"]
+    if orig_lvl.get("gap_t_s"): new_lvl["gap_t_s"] = orig_lvl["gap_t_s"]
     _set_state(inst, "levels", new_lvl)
     _set_state(inst, "last_gap_recovery_date", today)
     upsert_state(inst, {"levels_json": json.dumps(new_lvl)})

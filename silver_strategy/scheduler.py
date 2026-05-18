@@ -253,11 +253,13 @@ def _handle_gap_recovery():
                 pt_a_l1 = rt(new_e_l * 0.98); pt_b_l1 = lvl["sl1_long"]["b"]; sl1_l = max(pt_a_l1, pt_b_l1)
                 pt_a_l2 = rt(new_e_l * 0.98); pt_b_l2 = lvl["sl2_long"]["b"]; sl2_l = max(pt_a_l2, pt_b_l2)
                 
-                lvl["e_l"] = new_e_l; lvl["t_l"] = new_t_l
+                # Store gap entry internally — do NOT overwrite e_l (dashboard stays clean)
+                lvl["gap_e_l"] = new_e_l; lvl["gap_t_l"] = new_t_l
                 lvl["sl1_long"] = {"sl": sl1_l, "a": pt_a_l1, "b": pt_b_l1}
                 lvl["sl2_long"] = {"sl": sl2_l, "a": pt_a_l2, "b": pt_b_l2}
                 _set_state(inst, "long_state", "PENDING")
-                logger.info(f"{inst}: LONG Gap Recovery complete. New E_L={new_e_l}")
+                _set_state(inst, "long_gap_recovered", True)
+                logger.info(f"{inst}: LONG Gap Recovery complete. Gap E_L={new_e_l} | Dashboard E_L unchanged={lvl.get('e_l')}")
 
             if ss == "GAP":
                 new_e_s = rt(l15 * 0.9988)
@@ -265,14 +267,16 @@ def _handle_gap_recovery():
                 pt_a_s1 = rt(new_e_s * 1.02); pt_b_s1 = lvl["sl1_short"]["b"]; sl1_s = min(pt_a_s1, pt_b_s1)
                 pt_a_s2 = rt(new_e_s * 1.02); pt_b_s2 = lvl["sl2_short"]["b"]; sl2_s = min(pt_a_s2, pt_b_s2)
                 
-                lvl["e_s"] = new_e_s; lvl["t_s"] = new_t_s
+                # Store gap entry internally — do NOT overwrite e_s (dashboard stays clean)
+                lvl["gap_e_s"] = new_e_s; lvl["gap_t_s"] = new_t_s
                 lvl["sl1_short"] = {"sl": sl1_s, "a": pt_a_s1, "b": pt_b_s1}
                 lvl["sl2_short"] = {"sl": sl2_s, "a": pt_a_s2, "b": pt_b_s2}
                 _set_state(inst, "short_state", "PENDING")
-                logger.info(f"{inst}: SHORT Gap Recovery complete. New E_S={new_e_s}")
+                _set_state(inst, "short_gap_recovered", True)
+                logger.info(f"{inst}: SHORT Gap Recovery complete. Gap E_S={new_e_s} | Dashboard E_S unchanged={lvl.get('e_s')}")
 
             _set_state(inst, "levels", lvl)
-            tg.send(f"🔄 <b>{inst} Gap Recovery</b>\nNew levels calculated from 15-min open candle.")
+            tg.send(f"🔄 <b>{inst} Gap Recovery</b>\nNew gap entry levels calculated from 15-min open candle.")
 
         # 2. SL PROTECTION (for Active Trades)
         for side in ["long", "short"]:
