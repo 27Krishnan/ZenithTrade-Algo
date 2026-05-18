@@ -379,6 +379,12 @@ def set_levels_from_gold_levels(inst: str, gl: GoldLevels):
         }
         _recalculate_active_levels(_live[inst])  # Apply entry-price overrides
 
+    # Clear gap_e_l / gap_e_s on every fresh daily fetch — fresh 4-day MCX levels take over
+    d.pop("gap_e_l", None)
+    d.pop("gap_e_s", None)
+    d.pop("gap_t_l", None)
+    d.pop("gap_t_s", None)
+
     upsert_state(inst, {
         "trading_symbol":   gl.trading_symbol,
         "token":            gl.token,
@@ -423,8 +429,10 @@ def _monitor_tick():
             continue
 
         lvl   = state.get("levels", {})
-        e_l   = lvl.get("e_l", 0)
-        e_s   = lvl.get("e_s", 0)
+        # Use gap recovery entry levels if available (set at 9:15 AM after a gap event)
+        # Dashboard always shows fresh e_l/e_s; gap_e_l/gap_e_s used only for trade trigger
+        e_l   = lvl.get("gap_e_l") or lvl.get("e_l", 0)
+        e_s   = lvl.get("gap_e_s") or lvl.get("e_s", 0)
         t_l   = lvl.get("t_l", 0)
         t_s   = lvl.get("t_s", 0)
         sl1l  = lvl.get("sl1_long",  {}).get("sl", 0)
@@ -678,7 +686,8 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
         from .calculator import rt
 
         # ── CASE 1: GAP RECOVERY ──────────────────────────────────────────────────
-        # Matches backtester exactly: new entry = gap_high * 1.0012 for LONG GAP
+        # KEY RULE: e_l / e_s are NEVER overridden — they always show fresh 4-day MCX calc.
+        # Gap recovery entry stored in gap_e_l / gap_e_s for internal trade triggering only.
         if state["long_state"] == "GAP":
             new_e_l  = rt(m15_high * 1.0012)
             new_t_l  = rt(new_e_l * 1.015)
@@ -689,8 +698,9 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             sl2_b    = lvl.get("sl2_long", {}).get("b", 0)
             new_sl2_l = max(sl2_a, sl2_b)
 
-            lvl["e_l"] = new_e_l
-            lvl["t_l"] = new_t_l
+            # Store gap entry internally — do NOT overwrite e_l (dashboard stays clean)
+            lvl["gap_e_l"] = new_e_l
+            lvl["gap_t_l"] = new_t_l
             if "sl1_long" in lvl:
                 lvl["sl1_long"]["a"] = sl1_a
                 lvl["sl1_long"]["sl"] = new_sl1_l
@@ -699,18 +709,18 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
                 lvl["sl2_long"]["sl"] = new_sl2_l
 
             _set_state(inst, "levels", lvl)
-            _set_state(inst, "long_state", "PENDING")  # Reset to PENDING with NEW entry
+            _set_state(inst, "long_state", "PENDING")
             _set_state(inst, "long_gap_recovered", True)
             changed = True
             logger.info(
                 f"{inst}: GAP RECOVERY (LONG) at 9:15 — "
-                f"New E_L={new_e_l} | T_L={new_t_l} | SL1={new_sl1_l} "
-                f"(15-min high={m15_high})"
+                f"Gap E_L={new_e_l} | Gap T_L={new_t_l} | SL1={new_sl1_l} "
+                f"(15-min high={m15_high}) | Dashboard E_L unchanged={lvl.get('e_l')}"
             )
             tg.send_msg(
                 f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
                 f"15-min High: *{m15_high}*\n"
-                f"New Long Entry: *{new_e_l}* (High × 1.0012)\n"
+                f"Gap Long Entry: *{new_e_l}* (High × 1.0012)\n"
                 f"Target: *{new_t_l}* | SL1: *{new_sl1_l}*\n"
                 f"Status → PENDING (waiting for entry trigger)"
             )
@@ -725,8 +735,9 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
             sl2_b    = lvl.get("sl2_short", {}).get("b", 9999999)
             new_sl2_s = min(sl2_a, sl2_b)
 
-            lvl["e_s"] = new_e_s
-            lvl["t_s"] = new_t_s
+            # Store gap entry internally — do NOT overwrite e_s (dashboard stays clean)
+            lvl["gap_e_s"] = new_e_s
+            lvl["gap_t_s"] = new_t_s
             if "sl1_short" in lvl:
                 lvl["sl1_short"]["a"] = sl1_a
                 lvl["sl1_short"]["sl"] = new_sl1_s
@@ -735,18 +746,18 @@ def _handle_915_sl_reset(inst: str, state: dict, ltp: float):
                 lvl["sl2_short"]["sl"] = new_sl2_s
 
             _set_state(inst, "levels", lvl)
-            _set_state(inst, "short_state", "PENDING")  # Reset to PENDING with NEW entry
+            _set_state(inst, "short_state", "PENDING")
             _set_state(inst, "short_gap_recovered", True)
             changed = True
             logger.info(
                 f"{inst}: GAP RECOVERY (SHORT) at 9:15 — "
-                f"New E_S={new_e_s} | T_S={new_t_s} | SL1={new_sl1_s} "
-                f"(15-min low={m15_low})"
+                f"Gap E_S={new_e_s} | Gap T_S={new_t_s} | SL1={new_sl1_s} "
+                f"(15-min low={m15_low}) | Dashboard E_S unchanged={lvl.get('e_s')}"
             )
             tg.send_msg(
                 f"📊 *{inst} GAP RECOVERY at 9:15 AM*\n"
                 f"15-min Low: *{m15_low}*\n"
-                f"New Short Entry: *{new_e_s}* (Low × 0.9988)\n"
+                f"Gap Short Entry: *{new_e_s}* (Low × 0.9988)\n"
                 f"Target: *{new_t_s}* | SL1: *{new_sl1_s}*\n"
                 f"Status → PENDING (waiting for entry trigger)"
             )
