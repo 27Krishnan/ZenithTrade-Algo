@@ -258,6 +258,23 @@ def set_levels_from_nifty_levels(inst: str, gl: NiftyLevels):
             if inst not in _live: _live[inst] = {}
             _live[inst].update(_row_to_live(row))
             logger.info(f"Nifty Strategy: Refreshed {inst} state from DB during level update")
+    else:
+        # Fresh day initialization: Reset any inactive/closed states to PENDING in memory
+        with _lock:
+            if inst in _live:
+                logger.info(f"Nifty Strategy: Fresh day initialization for {inst}. Resetting in-memory states to PENDING.")
+                _live[inst].update({
+                    "long_state": "PENDING",
+                    "long_entry_price": None,
+                    "long_entry_date": None,
+                    "long_lot1_closed": False,
+                    "long_pnl": 0.0,
+                    "short_state": "PENDING",
+                    "short_entry_price": None,
+                    "short_entry_date": None,
+                    "short_lot1_closed": False,
+                    "short_pnl": 0.0,
+                })
 
     with _lock:
         state = _live[inst]

@@ -889,16 +889,29 @@ async def data_updated_webhook(request: Request):
 
     def _pull_and_refresh():
         try:
-            logger.info("Webhook: GitHub notified data update — running git pull...")
-            result = subprocess.run(
-                ["git", "pull", "origin", "main"],
-                cwd="/home/charmkrish/ZenithTrade-Algo",
+            logger.info("Webhook: GitHub notified data update — running git fetch & reset...")
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+            # Step 1: Fetch latest from origin
+            fetch_res = subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                cwd=project_dir,
                 capture_output=True, text=True, timeout=60
             )
-            if result.returncode == 0:
-                logger.info(f"Webhook: git pull success: {result.stdout.strip()}")
+            if fetch_res.returncode != 0:
+                logger.error(f"Webhook: git fetch failed: {fetch_res.stderr.strip()}")
+                return
+
+            # Step 2: Hard reset to avoid merge conflicts
+            reset_res = subprocess.run(
+                ["git", "--no-pager", "reset", "--hard", "origin/main"],
+                cwd=project_dir,
+                capture_output=True, text=True, timeout=30
+            )
+            if reset_res.returncode == 0:
+                logger.info(f"Webhook: git reset success: {reset_res.stdout.strip()}")
             else:
-                logger.error(f"Webhook: git pull failed: {result.stderr.strip()}")
+                logger.error(f"Webhook: git reset failed: {reset_res.stderr.strip()}")
                 return
 
             # Trigger data refresh on all strategies

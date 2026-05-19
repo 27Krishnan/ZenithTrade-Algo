@@ -281,10 +281,32 @@ def set_levels_from_natural_gas_levels(inst: str, gl: NaturalGasLevels):
             _live[inst].update(_row_to_live(row))
             logger.info(f"Natural Gas Strategy: Refreshed {inst} state from DB during level update")
 
+
+    # Force refresh / reset in-memory state on a fresh trading day
+    from .database import get_today_state, get_active_state
+    row = get_active_state(inst) or get_today_state(inst)
+    if not row:
+        with _lock:
+            if inst in _live:
+                logger.info(f"Natural Gas Strategy: Fresh day initialization for {inst}. Resetting in-memory states to PENDING.")
+                _live[inst].update({
+                    "long_state": "PENDING",
+                    "long_entry_price": None,
+                    "long_entry_date": None,
+                    "long_lot1_closed": False,
+                    "long_pnl": 0.0,
+                    "short_state": "PENDING",
+                    "short_entry_price": None,
+                    "short_entry_date": None,
+                    "short_lot1_closed": False,
+                    "short_pnl": 0.0,
+                })
+
     with _lock:
-        old_lvl = _live.get(inst, {}).get("levels", {})
-        long_st = _live.get(inst, {}).get("long_state")
-        short_st = _live.get(inst, {}).get("short_state")
+        prev = _live.get(inst, {})
+        old_lvl = prev.get("levels", {})
+        long_st = prev.get("long_state")
+        short_st = prev.get("short_state")
         
         if long_st in ("ACTIVE_P1", "ACTIVE_P2"):
             if "sl1_long" in d and "sl1_long" in old_lvl:

@@ -29,19 +29,26 @@ def auto_pull_latest(strategy_name: str = "System"):
         # Determine the project root (one level up from 'core/')
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         
-        result = subprocess.run(
-            [git_cmd, "pull", "origin", "main"], 
+        fetch_res = subprocess.run(
+            [git_cmd, "fetch", "origin", "main"], 
             cwd=project_root,
             capture_output=True, 
             text=True
         )
-        
-        if result.returncode == 0:
-            logger.info(f"{strategy_name}: Git pull successful.")
-            if "Already up to date" not in result.stdout:
-                logger.info(f"{strategy_name}: Changes detected and pulled.")
+        if fetch_res.returncode != 0:
+            logger.error(f"{strategy_name}: Git fetch failed: {fetch_res.stderr}")
+            return
+            
+        reset_res = subprocess.run(
+            [git_cmd, "--no-pager", "reset", "--hard", "origin/main"],
+            cwd=project_root,
+            capture_output=True,
+            text=True
+        )
+        if reset_res.returncode == 0:
+            logger.info(f"{strategy_name}: Git reset successful: {reset_res.stdout.strip()}")
         else:
-            logger.error(f"{strategy_name}: Git pull failed: {result.stderr}")
+            logger.error(f"{strategy_name}: Git reset failed: {reset_res.stderr}")
             
     except Exception as e:
         logger.error(f"{strategy_name}: Git pull error: {e}")
